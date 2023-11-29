@@ -1,0 +1,11 @@
+@startuml 
+class RL4COTrainer {
+  attribute1: type
+  fit(model,train_dataload,val_dl,)
+}
+
+class RL4COEnvBase {
+  attribute1: type
+  fit(model,train_dataload,val_dl,)
+}
+@enduml
