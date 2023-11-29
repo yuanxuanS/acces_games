@@ -42,7 +42,7 @@ def decode_probs(probs, mask, decode_type="sampling"):
         ).data.any(), "Decode greedy: infeasible action has maximum probability"
 
     elif "sampling" in decode_type:
-        selected = torch.multinomial(probs, 1).squeeze(1)
+        selected = torch.multinomial(probs, 1).squeeze(1)   # 多项式采样
 
         while mask.gather(1, selected.unsqueeze(-1)).data.any():
             log.info("Sampled bad values, resampling!")
