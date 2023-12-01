@@ -56,6 +56,7 @@ class CVRPEnv(RL4COEnvBase):
     """
 
     name = "cvrp"
+    _stochastic = False
 
     def __init__(
         self,
@@ -89,10 +90,10 @@ class CVRPEnv(RL4COEnvBase):
 
         # Not selected_demand is demand of first node (by clamp) so incorrect for nodes that visit depot!
         selected_demand = gather_by_index(
-            td["demand"], torch.clamp(current_node - 1, 0, n_loc - 1), squeeze=False
+            td["real_demand"], torch.clamp(current_node - 1, 0, n_loc - 1), squeeze=False
         )
 
-        # Increase capacity if depot is not visited, otherwise set to 0
+        # Increase capacity if this time depot is not visited, otherwise set to 0
         used_capacity = (td["used_capacity"] + selected_demand) * (
             current_node != 0
         ).float()
@@ -131,10 +132,14 @@ class CVRPEnv(RL4COEnvBase):
         self.to(td.device)
 
         # Create reset TensorDict
+        real_demand = (
+            td["stochastic_demand"] if self.stochastic else td["demand"]
+        )
         td_reset = TensorDict(
             {
                 "locs": torch.cat((td["depot"][:, None, :], td["locs"]), -2),
-                "demand": td["demand"],
+                "demand": td["demand"], # observed demand
+                "real_demand": real_demand,
                 "current_node": torch.zeros(
                     *batch_size, 1, dtype=torch.long, device=self.device
                 ),
@@ -226,6 +231,15 @@ class CVRPEnv(RL4COEnvBase):
             + 1
         ).float().to(self.device)
 
+        #  E(stochastic demand) = E(demand)
+        stochastic_demand = (
+            torch.FloatTensor(*batch_size, self.num_loc)
+            .uniform_(self.min_demand - 1, self.max_demand - 1)
+            .int()
+            + 1
+        ).float().to(self.device)
+
+        # print(f"demand is {demand}\n stochastic demand is {stochastic_demand}")
         # Support for heterogeneous capacity if provided
         if not isinstance(self.capacity, torch.Tensor):
             capacity = torch.full((*batch_size,), self.capacity, device=self.device)
@@ -236,8 +250,9 @@ class CVRPEnv(RL4COEnvBase):
             {
                 "locs": locs_with_depot[..., 1:, :],
                 "depot": locs_with_depot[..., 0, :],
-                "demand": demand / CAPACITIES[self.num_loc],
-                "capacity": capacity,
+                "demand": demand / CAPACITIES[self.num_loc],        # normalize demands
+                "stochastic_demand": stochastic_demand / CAPACITIES[self.num_loc],
+                "capacity": capacity,       # =1
             },
             batch_size=batch_size,
             device=self.device,
@@ -252,6 +267,16 @@ class CVRPEnv(RL4COEnvBase):
         td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
         return td_load
 
+    @property
+    def stochastic(self):
+        return self._stochastic
+    
+    @stochastic.setter
+    def stochastic(self, state: bool):
+        if state is True:
+            log.warning(
+                "Stochastic mode should not be used for CVRP. Use SVRP instead."
+            )
     def _make_spec(self, td_params: TensorDict):
         """Make the observation and action specs from the parameters."""
         self.observation_spec = CompositeSpec(

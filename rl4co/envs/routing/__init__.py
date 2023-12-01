@@ -1,5 +1,6 @@
 from rl4co.envs.routing.atsp import ATSPEnv
 from rl4co.envs.routing.cvrp import CVRPEnv
+from rl4co.envs.routing.svrp import SVRPEnv
 from rl4co.envs.routing.mtsp import MTSPEnv
 from rl4co.envs.routing.op import OPEnv
 from rl4co.envs.routing.pctsp import PCTSPEnv
