@@ -15,6 +15,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPInitEmbedding,
         "atsp": TSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
+        "svrp": VRPInitEmbedding,
         "sdvrp": VRPInitEmbedding,
         "pctsp": PCTSPInitEmbedding,
         "spctsp": PCTSPInitEmbedding,

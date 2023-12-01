@@ -260,7 +260,7 @@ class PCTSPEnv(RL4COEnvBase):
     def stochastic(self):
         return self._stochastic
 
-    @stochastic.setter
+    @stochastic.setter      # avoid wrongly assigning stochastic with True in pctsp
     def stochastic(self, state: bool):
         if state is True:
             log.warning(
