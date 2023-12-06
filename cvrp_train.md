@@ -17,10 +17,13 @@ RL4COLitModule->>REINFORCE:shared_step()
 REINFORCE->>TSPEnv:reset()
 TSPEnv->>REINFORCE:return td
 REINFORCE->>AutoregressivePolicy:forward()
+alt see policy.md
 AutoregressivePolicy->>GraphAttentionEncoder:forward()
 GraphAttentionEncoder->>AutoregressivePolicy:embeddings,init_embeds
 AutoregressivePolicy->>AutoregressiveDecoder:forward(td,env,embeddings
+
 AutoregressiveDecoder->>AutoregressivePolicy:log_p,actions,td_out
+end
 AutoregressivePolicy->>AutoregressivePolicy:get_log_likelihood,return out:reward
 AutoregressivePolicy->>REINFORCE:out
 REINFORCE->>REINFORCE:calculate_loss, log_metrics
