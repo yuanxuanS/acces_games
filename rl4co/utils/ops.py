@@ -74,6 +74,7 @@ def gather_by_index(src, idx, dim=1, squeeze=True):
     return src.gather(dim, idx).squeeze() if squeeze else src.gather(dim, idx)
 
 
+
 @torch.jit.script
 def get_distance(x: Tensor, y: Tensor):
     """Euclidean distance between two tensors of shape `[..., n, dim]`"""

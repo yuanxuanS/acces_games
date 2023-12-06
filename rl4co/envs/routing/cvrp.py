@@ -196,8 +196,8 @@ class CVRPEnv(RL4COEnvBase):
         ).all() and (sorted_pi[:, :-graph_size] == 0).all(), "Invalid tour"
 
         # Visiting depot resets capacity so we add demand = -capacity (we make sure it does not become negative)
-        demand_with_depot = torch.cat((-td["vehicle_capacity"], td["demand"]), 1)
-        d = demand_with_depot.gather(1, actions)
+        real_demand_with_depot = torch.cat((-td["vehicle_capacity"], td["real_demand"]), 1)
+        d = real_demand_with_depot.gather(1, actions)
 
         used_cap = torch.zeros_like(td["demand"][:, 0])
         for i in range(actions.size(1)):
