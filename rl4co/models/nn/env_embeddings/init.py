@@ -15,7 +15,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPInitEmbedding,
         "atsp": TSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
-        "svrp": VRPInitEmbedding,
+        "svrp": SVRPInitEmbedding,
         "sdvrp": VRPInitEmbedding,
         "pctsp": PCTSPInitEmbedding,
         "spctsp": PCTSPInitEmbedding,
@@ -78,7 +78,40 @@ class VRPInitEmbedding(nn.Module):
         out = torch.cat((depot_embedding, node_embeddings), -2)
         return out
 
+class SVRPInitEmbedding(nn.Module):
+    """Initial embedding for the Vehicle Routing Problems (VRP).
+    Embed the following node features to the embedding space:
+        - locs: x, y coordinates of the nodes (depot and customers separately)
+        - demand: demand of the customers
+    """
 
+    def __init__(self, embedding_dim, linear_bias=True):
+        super(SVRPInitEmbedding, self).__init__()
+        weather_dim = 3
+        node_dim = 3  # x, y, demand
+        self.init_embed = nn.Linear(node_dim+weather_dim, embedding_dim, linear_bias)
+        self.init_embed_depot = nn.Linear(
+            2+weather_dim, embedding_dim, linear_bias
+        )  # depot embedding
+
+    def forward(self, td):
+        depot, cities = td["locs"][:, :1, :], td["locs"][:, 1:, :]
+
+        # [batch, 1, 2]-> [batch, 1, 5]
+        depot_vec = torch.cat((depot, td["weather"][:, None, :]), -1)    
+        # [batch, n_city, 2]-> [batch, n_city, 5]
+        cities_vec = torch.cat((cities, td["weather"][:, None, :].repeat(1, cities.size(1), 1)), -1)
+        
+        # [batch, 1, 5]-> [batch, 1, embedding_dim]
+        depot_embedding = self.init_embed_depot(depot_vec)
+        # [batch, n_city, 2]  -> [batch, n_city, embedding_dim]
+        node_embeddings = self.init_embed(
+            torch.cat((cities_vec, td["demand"][..., None]), -1)
+        )
+        # [batch, n_city+1, embedding_dim]
+        out = torch.cat((depot_embedding, node_embeddings), -2)
+        return out
+    
 class PCTSPInitEmbedding(nn.Module):
     """Initial embedding for the Prize Collecting Traveling Salesman Problems (PCTSP).
     Embed the following node features to the embedding space:

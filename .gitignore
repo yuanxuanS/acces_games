@@ -1,6 +1,7 @@
 # Data folder. If needed, add files with git add -f <file>
 #my
 /.history
+*.ckpt
 # only at the project root (leading /)
 /data 
 *.npz
