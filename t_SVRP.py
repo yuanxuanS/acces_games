@@ -21,7 +21,7 @@ model = AttentionModel(env,
 
 # # Greedy rollouts over untrained model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-td_init = env.reset(batch_size=[3]).to(device)      # init batch_size datas by generate_data, return data in td
+td_init = env.reset(batch_size=[10]).to(device)      # init batch_size datas by generate_data, return data in td
 print(td_init)
 print(env.dataset().data)       # td: data variables in env
 print(len(env.dataset()))   # init with 0 data
@@ -34,11 +34,11 @@ print(out)
 # # for td, actions in zip(td_init, out['actions'].cpu()):
 # #     env.render(td, actions)
 
-# trainer = RL4COTrainer(
-#     max_epochs=3,
-#     accelerator="auto",
-#     devices=1,
-#     logger=None,
-# )
+trainer = RL4COTrainer(
+    max_epochs=3,
+    accelerator="auto",
+    devices=1,
+    logger=None,
+)
 
-# trainer.fit(model)
+trainer.fit(model)
