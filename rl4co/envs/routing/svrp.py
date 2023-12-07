@@ -195,18 +195,18 @@ class SVRPEnv(CVRPEnv):
         T = inp/A
         
         var_noise = T*G
-        noise = torch.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
+        noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
         noise = var_noise*noise     # multivariable normal distr, var_noise mean
         
         var_w = T*B
         sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
-        alphas = torch.rand((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
+        alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
         alphas /= alphas.sum(axis=2)[:, :, None, :]       # normalize alpha to 0-1
         alphas *= sum_alpha     # alpha value [4.5*var_w]
         alphas = torch.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
-        signs = torch.rand((n_problems, n_nodes, 9, shape))
+        signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
         signs = torch.where(signs > 0.5)
-        alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) , sqrt(4.5*var_w)]
+        alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
         w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
         # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]

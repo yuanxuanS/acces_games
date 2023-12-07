@@ -56,7 +56,7 @@ callbacks = [checkpoint_callback, rich_model_summary]
 ### logging 
 wandb.login()
 
-logger = WandbLogger(project="rl4co-robust", name="svrp-am")
+logger = WandbLogger(project="rl4co-robust", name="svrp-am-weath")
 ## Keep below if you don't want logging
 # logger = None
 
