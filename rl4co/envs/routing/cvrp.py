@@ -90,7 +90,7 @@ class CVRPEnv(RL4COEnvBase):
 
         # Not selected_demand is demand of first node (by clamp) so incorrect for nodes that visit depot!
         selected_demand = gather_by_index(
-            td["real_demand"], torch.clamp(current_node - 1, 0, n_loc - 1), squeeze=False
+            td["demand"], torch.clamp(current_node - 1, 0, n_loc - 1), squeeze=False
         )
 
         # Increase capacity if this time depot is not visited, otherwise set to 0
@@ -193,8 +193,8 @@ class CVRPEnv(RL4COEnvBase):
         ).all() and (sorted_pi[:, :-graph_size] == 0).all(), "Invalid tour"
 
         # Visiting depot resets capacity so we add demand = -capacity (we make sure it does not become negative)
-        real_demand_with_depot = torch.cat((-td["vehicle_capacity"], td["real_demand"]), 1)
-        d = real_demand_with_depot.gather(1, actions)
+        demand_with_depot = torch.cat((-td["vehicle_capacity"], td["demand"]), 1)
+        d = demand_with_depot.gather(1, actions)
 
         used_cap = torch.zeros_like(td["demand"][:, 0])
         for i in range(actions.size(1)):
