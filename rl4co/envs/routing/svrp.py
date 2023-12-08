@@ -216,6 +216,53 @@ class SVRPEnv(CVRPEnv):
         out = inp + tot_w + noise
         
         return out
+    
+    def _step(self, td: TensorDict) -> TensorDict:
+        current_node = td["action"][:, None]  # Add dimension for step
+        n_loc = td["demand"].size(-1)  # Excludes depot
+
+        # Not selected_demand is demand of first node (by clamp) so incorrect for nodes that visit depot!
+        selected_demand = gather_by_index(
+            td["real_demand"], torch.clamp(current_node - 1, 0, n_loc - 1), squeeze=False
+        )
+
+        # Increase capacity if this time depot is not visited, otherwise set to 0
+        used_capacity = (td["used_capacity"] + selected_demand) * (
+            current_node != 0
+        ).float()
+
+        # Note: here we do not subtract one as we have to scatter so the first column allows scattering depot
+        # Add one dimension since we write a single value
+        visited = td["visited"].scatter(-1, current_node[..., None], 1)
+
+        # SECTION: get done
+        done = visited.sum(-1) == visited.size(-1)
+        reward = torch.zeros_like(done)
+
+        td.update(
+            {
+                "current_node": current_node,
+                "used_capacity": used_capacity,
+                "visited": visited,
+                "reward": reward,
+                "done": done,
+            }
+        )
+        td.set("action_mask", self.get_action_mask(td))
+        return td
+    
+    @staticmethod
+    def get_action_mask(td: TensorDict) -> torch.Tensor:
+        # cannot mask exceeding node in svrp
+        exceeds_cap = td["demand"][:, None, :] + td["used_capacity"][..., None] > 1.0
+
+        # Nodes that cannot be visited are already visited
+        mask_loc = td["visited"][..., 1:].to(exceeds_cap.dtype)
+
+        # Cannot visit the depot if just visited and still unserved nodes
+        mask_depot = (td["current_node"] == 0) & ((mask_loc == 0).int().sum(-1) > 0)
+        return ~torch.cat((mask_depot[..., None], mask_loc), -1).squeeze(-2)
+    
     def _reset(
         self,
         td: Optional[TensorDict] = None,
