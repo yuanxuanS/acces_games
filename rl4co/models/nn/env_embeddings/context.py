@@ -17,7 +17,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPContext,
         "atsp": TSPContext,
         "cvrp": VRPContext,
-        "svrp": VRPContext,
+        "svrp": SVRPContext,
         "sdvrp": VRPContext,
         "pctsp": PCTSPContext,
         "spctsp": PCTSPContext,
@@ -115,6 +115,27 @@ class VRPContext(EnvContext):
         state_embedding = td["vehicle_capacity"] - td["used_capacity"]
         return state_embedding
 
+class SVRPContext(EnvContext):
+    """Context embedding for the Stochastic Vehicle Routing Problem (SVRP).
+    Project the following to the embedding space:
+        - current node embedding
+        - remaining capacity (vehicle_capacity - used_capacity) 
+        - demand change of current nodes: demand - real demand
+    """
+
+    def __init__(self, embedding_dim):
+        super(SVRPContext, self).__init__(embedding_dim, embedding_dim + 2)
+    
+    def _state_embedding(self, embeddings, td):
+        state_embedding = td["vehicle_capacity"] - td["used_capacity"]
+        
+        is_depot = td["current_node"] == 0
+        current_demand_error = (td["demand"] - td["real_demand"])[torch.arange(is_depot.size(0)),
+                                                                  (td["current_node"] - 1).squeeze()][:, None]  #node idx -1 for :idx start from 0 ; if 0, get -1 idx, but get 0 in next code
+        zeros_ = torch.zeros_like(current_demand_error, device=state_embedding.device)
+        demand_error = torch.where(is_depot, zeros_, current_demand_error)
+        state_embedding = torch.concatenate((state_embedding, demand_error), 1)
+        return state_embedding
 
 class PCTSPContext(EnvContext):
     """Context embedding for the Prize Collecting TSP (PCTSP).
