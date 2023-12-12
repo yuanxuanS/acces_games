@@ -58,7 +58,7 @@ class SVRPEnv(CVRPEnv):
             )
 
     def get_reward(self, td: TensorDict, actions: TensorDict) -> TensorDict:
-        # Check that the solution is valid
+        # get the solution's penaltied idx
         loc_idx_penaltied = self.get_penalty_loc_idx(td, actions)   #[batch, penalty_number]
 
         # Gather dataset in order of tour
@@ -197,8 +197,10 @@ class SVRPEnv(CVRPEnv):
         var_noise = T*G
         noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
         noise = var_noise*noise     # multivariable normal distr, var_noise mean
+        noise = torch.clamp(noise, min=-var_noise)
         
         var_w = T*B
+        # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
         alphas /= alphas.sum(axis=2)[:, :, None, :]       # normalize alpha to 0-1
@@ -212,11 +214,13 @@ class SVRPEnv(CVRPEnv):
         # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
         w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
         
-        tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]-[batch, nodes,1]
+        tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+        tot_w = torch.clamp(tot_w, min=-var_w)
         out = inp + tot_w + noise
         
         return out
     
+
     def _step(self, td: TensorDict) -> TensorDict:
         current_node = td["action"][:, None]  # Add dimension for step
         n_loc = td["demand"].size(-1)  # Excludes depot
