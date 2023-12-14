@@ -31,7 +31,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 td_init = env.reset(batch_size=[10]).to(device)      # init batch_size datas by generate_data, return data in td
 
 baseline = TabuSearch_svrp(td_init.clone())
-out = baseline.forward()
+out, _ = baseline.forward()
 # print(td_init)
 # print(env.dataset().data)       # td: data variables in env
 # print(len(env.dataset()))   # init with 0 data
