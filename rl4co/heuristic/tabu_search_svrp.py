@@ -20,19 +20,55 @@ class TabuSearch_svrp:
         self.best_cost = None
         
     def forward(self):
-        "get solutions of all batch instances"
+        '''get solutions of all batch instances:
+        search according expected demand, but evaluate it with real demand
+        '''
         batch_solutions = list()
         batch_costs = list()
+        batch_costs_real = list()       
         for i in range(self.batch_size):
             print(f"search for data {i}")
             instance_i = self.td[i]
             best_solution, best_cost = self.forward_single(instance_i)
             batch_solutions.append(best_solution)
             batch_costs.append(best_cost)
-        
+            
+            real_cost = self.get_real_penalty(best_solution, i) + best_cost
+            batch_costs_real.append(real_cost)        
         print(f"best cost of all data are {batch_costs}")
+        print(f"real cost of all data are {batch_costs_real}")
         return batch_solutions, batch_costs
     
+    def get_real_penalty(self, sol, batch_i):
+        
+        assert self.is_valid(sol), "this solution is invalid"
+        
+        # Visiting depot resets capacity so we add demand = -capacity (we make sure it does not become negative)
+        real_demand_with_depot = torch.cat((-self.td[batch_i]["vehicle_capacity"], self.td[batch_i]["real_demand"]))
+        d = []
+        for route in sol:
+            route_d = []
+            for custom in route:
+                route_d.append(real_demand_with_depot[custom])
+            d.append(route_d)
+
+        used_cap = 0.
+        penalty_loc_idx = []
+        for i in range(len(sol)):
+            for j in range(len(sol[i])):
+                used_cap += d[i][j]  # This will reset/make capacity negative if i == 0, e.g. depot visited
+                # Cannot use less than 0
+                if used_cap < 0:
+                    used_cap = 0.
+                     
+                if used_cap > self.td[batch_i]["vehicle_capacity"] + 1e-5:
+                    # print("Used more than capacity")
+                    used_cap = d[i][j]
+                    penalty_loc_idx.append(sol[i][j])
+                    
+        penaltied_cost = self.distance_matrix[0, penalty_loc_idx]
+        
+        return penaltied_cost.sum() * 2
     
     def get_distance_matrix(self, instance_td):
         # read pairwise distance: 
