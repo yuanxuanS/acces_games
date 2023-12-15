@@ -190,7 +190,8 @@ class SVRPEnv(CVRPEnv):
             device=self.device,
         )
 
-    def get_stoch_var(self, inp, w, alphas, A=0.6, B=0.2, G=0.2):
+    @staticmethod
+    def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
         n_problems,n_nodes,shape = inp.shape
         T = inp/A
         
