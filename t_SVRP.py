@@ -6,7 +6,7 @@ from rl4co.envs import SVRPEnv, SPCTSPEnv
 from rl4co.models.zoo.am import AttentionModel
 from rl4co.utils.trainer import RL4COTrainer
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
-from rl4co.heuristic import CW
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp
 
 # RL4CO env based on TorchRL
 env = SVRPEnv(num_loc=20) 
@@ -56,11 +56,11 @@ rich_model_summary = RichModelSummary(max_depth=3)
 callbacks = [checkpoint_callback, rich_model_summary]
 
 ### logging 
-wandb.login()
+# wandb.login()
 
-logger = WandbLogger(project="rl4co-robust", name="svrp-am-weath-demand_f")
+# logger = WandbLogger(project="rl4co-robust", name="svrp-am-weath-demand_f")
 ## Keep below if you don't want logging
-# logger = None
+logger = None
 
 trainer = RL4COTrainer(
     max_epochs=3,
@@ -77,9 +77,12 @@ model = model.to(device)
 out = model(td_init.clone(), phase="test", decode_type="greedy", return_actions=True)
 print(f"Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
 
-### baseline CW
-baseline = CW(td_init.clone())
-out = baseline.forward()
+### baseline 
+baseline_cw = CW_svrp(td_init.clone())
+out = baseline_cw.forward()
+
+baseline_tabu = TabuSearch_svrp(td_init.clone())
+out = baseline_tabu.forward()
 ### load and test
 # Environment, Model, and Lightning Module (reinstantiate from scratch)
 # model_l = AttentionModel(env,

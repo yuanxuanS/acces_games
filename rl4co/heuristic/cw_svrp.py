@@ -9,7 +9,7 @@ from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 
 
-class CW:
+class CW_svrp:
     def __init__(self, td) -> None:
         super().__init__()
         self.td = td
@@ -22,7 +22,7 @@ class CW:
         self.capacity = 1        # define by env
         
         
-    def node_data(self):
+    def __node_data(self):
         # get node data in coordinate (x,y) format from envs 
         # node idx, distance to depot, demand
         depot = self.td["locs"][:, 0:1, :]
@@ -30,7 +30,7 @@ class CW:
         demand = self.td["demand"]      # expected demand, [batch, num_loc, 1]
         self.data_nodes = torch.concatenate((distance_to_depot[..., None], demand[..., None]), -1)        #[batch, num_loc, 2]
         
-    def pairwise(self):
+    def __pairwise(self):
         # read pairwise distance: 
         self.num_customer = self.td["locs"].size(1) - 1     # substract depot
         # self.pair_wise = torch.zeros((num_customers, num_customers))
@@ -43,7 +43,7 @@ class CW:
         self.pair_wise = torch.sqrt((loc_left_x - loc_right_x)**2 + (loc_left_y  - loc_right_y)**2)
             
     
-    def get_savings(self):
+    def __get_savings(self):
         # calculate savings for each link
         for r in range(1, self.num_customer+1, 1):      # start from 1, to num_cust
             for c in range(r, self.num_customer+1, 1):
@@ -54,15 +54,16 @@ class CW:
                     self.savings[key] = self.data_nodes[:, r-1, 0] + self.data_nodes[:, c-1, 0] - self.pair_wise[:, r-1, c-1]   #[batch]
 
 
-
+    @staticmethod
+    def get_node(link):
     # convert link string to link list to handle saving's key, i.e. str(10, 6) to (10, 6)
-    def get_node(self, link):
         link = link[1:]
         link = link[:-1]
         nodes = link.split(',')
         return [int(nodes[0]), int(nodes[1])]
 
-    def which_route(self, link, routes_single):
+    @staticmethod
+    def which_route(link, routes_single):
     # determine 4 things:
     # 1. if the link in any route in routes -> determined by if count_in > 0
     # 2. if yes, which node is in the route -> returned to node_sel
@@ -92,15 +93,16 @@ class CW:
         return node_sel, count_in, i_route, overlap
     
         
-    def sum_cap(self, i, route):
+    def _sum_cap(self, i, route):
         # sum up to obtain the total used capacity belonging to a route
         sum_cap = 0
         for node in route:
             sum_cap += self.data_nodes[i, node-1, 1]      # get demand of node in data i
         return sum_cap
 
+    @staticmethod
+    def interior(node, route):
     # determine if a node is interior to a route
-    def interior(self, node, route):
         try:
             i = route.index(node)
             # adjacent to depot, not interior
@@ -115,8 +117,9 @@ class CW:
 
 
 
+    @staticmethod
+    def merge(route0, route1, link):
     # merge two routes with a connection link
-    def merge(self, route0, route1, link):
         if route0.index(link[0]) != (len(route0) - 1):
             route0.reverse()
         
@@ -125,7 +128,7 @@ class CW:
             
         return route0 + route1
 
-    def get_reward(self, td: TensorDict, batch_actions):
+    def _get_reward(self, td: TensorDict, batch_actions):
         '''
         batch_actions: from 1 to num_customers
         '''
@@ -203,9 +206,9 @@ class CW:
     
     def forward(self):
         
-        self.node_data()
-        self.pairwise()
-        self.get_savings()
+        self.__node_data()
+        self.__pairwise()
+        self.__get_savings()
         
         for i in range(self.data_nodes.size(0)):
             single_routes = self.forward_single(i)
@@ -214,8 +217,8 @@ class CW:
             self.routes.append(single_routes)
         
         
-        rewards = self.get_reward(self.td, self.routes)     #[batch]
-        print('------')
+        rewards = self._get_reward(self.td, self.routes)     #[batch]
+        print('------CW-----')
         print(f'Routes found are:{self.routes}, rewards are {rewards} ')
         return self.routes
 
@@ -249,7 +252,7 @@ class CW:
                 # condition a. Either, neither i nor j have already been assigned to a route, 
                 # ...in which case a new route is initiated including both i and j.
                 if num_in == 0:
-                    if self.sum_cap(i, link) <= self.capacity:
+                    if self._sum_cap(i, link) <= self.capacity:
                         self.routes_single.append(link)
                         node_list.remove(link[0])
                         node_list.remove(link[1])
@@ -271,7 +274,7 @@ class CW:
                     node = link_temp[0]
 
                     cond1 = (not self.interior(n_sel, self.routes_single[i_rt]))
-                    cond2 = (self.sum_cap(i, self.routes_single[i_rt] + [node]) <= self.capacity)
+                    cond2 = (self._sum_cap(i, self.routes_single[i_rt] + [node]) <= self.capacity)
 
                     if cond1:
                         if cond2:
@@ -294,7 +297,7 @@ class CW:
                     if overlap == 0:
                         cond1 = (not self.interior(node_sel[0], self.routes_single[i_route[0]]))
                         cond2 = (not self.interior(node_sel[1], self.routes_single[i_route[1]]))
-                        cond3 = (self.sum_cap(i, self.routes_single[i_route[0]] + self.routes_single[i_route[1]]) <= self.capacity)
+                        cond3 = (self._sum_cap(i, self.routes_single[i_route[0]] + self.routes_single[i_route[1]]) <= self.capacity)
 
                         if cond1 and cond2:
                             if cond3:

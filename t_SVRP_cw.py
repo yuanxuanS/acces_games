@@ -9,7 +9,7 @@ from rl4co.utils.trainer import RL4COTrainer
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
-from rl4co.heuristic import CW
+from rl4co.heuristic import CW_svrp
 # RL4CO env based on TorchRL
 env = SVRPEnv(num_loc=20) 
 
