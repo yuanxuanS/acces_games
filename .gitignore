@@ -2,6 +2,7 @@
 #my
 /.history
 *.ckpt
+README.md
 # only at the project root (leading /)
 /data 
 *.npz

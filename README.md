@@ -1,4 +1,4 @@
-<!-- <div align="center">
+<div align="center">
 
 
 <img src="https://github.com/ai4co/rl4co/assets/48984123/01a547b2-9722-4540-b0e1-9c12af094b15" style="width:40%">
@@ -191,4 +191,4 @@ We invite you to join our AI4CO community, an open research group in Artificial 
   <img width="30%" src="https://github.com/ai4co/rl4co/assets/48984123/2f1298ef-15e1-4a66-9741-78ee75938789">
 </p>
 
- -->
+
