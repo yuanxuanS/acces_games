@@ -14,6 +14,7 @@ log = get_pylogger(__name__)
 DISTRIBUTIONS_PER_PROBLEM = {
     "tsp": [None],
     "vrp": [None],
+    "svrp": ["modelize", "uniform"],
     "pctsp": [None],
     "op": ["const", "unif", "dist"],
     "mdpp": [None],
@@ -80,6 +81,94 @@ def generate_vrp_data(dataset_size, vrp_size, capacities=None):
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
 
+def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
+    # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
+    CAPACITIES = {
+        10: 20.0,
+        15: 25.0,
+        20: 30.0,
+        30: 33.0,
+        40: 37.0,
+        50: 40.0,
+        60: 43.0,
+        75: 45.0,
+        100: 50.0,
+        125: 55.0,
+        150: 60.0,
+        200: 70.0,
+        500: 100.0,
+        1000: 150.0,
+    }
+
+    # If capacities are provided, replace keys in CAPACITIES with provided values if they exist
+    if capacities is not None:
+        for k, v in capacities.items():
+            if k in CAPACITIES:
+                print(f"Replacing capacity for {k} with {v}")
+                CAPACITIES[k] = v
+    
+    demand = np.random.randint(1, 10, size=(dataset_size, vrp_size)).astype(
+            np.float32
+        )  # Demand, uniform integer 1 ... 9
+    
+    weather = np.random.uniform(low=-1., high=1., size=(dataset_size, 3)).astype(
+            np.float32
+        )  # Weather, uniform float (-1, 1)
+    
+    #  E(stochastic demand) = E(demand)
+    if generate_type == "uniform":
+        stochastic_demand = np.random.randint(1, 10, size=(dataset_size, vrp_size)).astype(
+            np.float32
+        )
+    elif generate_type == "modelize":
+        # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
+
+        stochastic_demand = get_stoch_var(demand[..., np.newaxis], 
+                                                np.repeat(weather[:, np.newaxis, :], vrp_size, axis=1),
+                                                None).squeeze(-1).astype(np.float32)
+            
+    return {
+        "depot": np.random.uniform(size=(dataset_size, 2)).astype(
+            np.float32
+        ),  # Depot location
+        "locs": np.random.uniform(size=(dataset_size, vrp_size, 2)).astype(
+            np.float32
+        ),  # Node locations
+        "demand": demand,
+        "stochastic_demand": stochastic_demand,
+        "weather": weather,
+        "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
+    }  # Capacity, same for whole dataset
+
+def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
+    n_problems,n_nodes,shape = inp.shape
+    T = inp/A
+    
+    var_noise = T*G
+    noise = np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
+    noise = var_noise*noise     # multivariable normal distr, var_noise mean
+    noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
+        
+    var_w = T*B
+    # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
+    sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
+    alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
+    alphas /= alphas.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
+    alphas *= sum_alpha     # alpha value [4.5*var_w]
+    alphas = np.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
+    signs = np.random.random((n_problems, n_nodes, 9, shape))
+    signs = np.where(signs > 0.5)
+    alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        
+    w1 = np.repeat(w, 3, axis=2)[..., np.newaxis]       # [batch, nodes, 3*repeat3=9, 1]
+    # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
+    w2 = np.concatenate([w, np.roll(w,shift=1,axis=2), np.roll(w,shift=2,axis=2)], 2)[..., np.newaxis]
+    
+    tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+    tot_w = np.clip(tot_w, a_min=-var_w, a_max=var_w)
+    out = inp + tot_w + noise
+        
+    return out
 
 def generate_pdp_data(dataset_size, pdp_size):
     depot = np.random.uniform(size=(dataset_size, 2))

@@ -165,7 +165,7 @@ class SVRPEnv(CVRPEnv):
             stochastic_demand = self.get_stoch_var(demand[..., None], 
                                                    weather[:, None, :].
                                                    repeat(1, self.num_loc, 1),
-                                                   None).squeeze(-1)
+                                                   None).squeeze(-1).float().to(self.device)
             # .float().to(self.device)
 
         # print(f"demand is {demand}\n stochastic demand is {stochastic_demand}")
