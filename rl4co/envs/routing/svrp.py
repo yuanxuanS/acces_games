@@ -5,6 +5,8 @@ from torch.nn.utils.rnn import pad_sequence
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 from tensordict.tensordict import TensorDict
 from typing import Optional
+from rl4co.data.utils import load_npz_to_tensordict
+
 
 log = get_pylogger(__name__)
 
@@ -45,7 +47,16 @@ class SVRPEnv(CVRPEnv):
         self.generate_method = generate_method
         assert self.generate_method in ["uniform", "modelize"], "way of generate stochastic data is invalid"
         
-
+    @staticmethod
+    def load_data(fpath, batch_size=[]):
+        """Dataset loading from file
+        Normalize demand and stochastic_demand by capacity to be in [0, 1]
+        """
+        td_load = load_npz_to_tensordict(fpath)
+        td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
+        td_load.set("stochastic_demand", td_load["stochastic_demand"] / td_load["capacity"][:, None])
+        return td_load
+    
     @property
     def stochastic(self):
         return self._stochastic

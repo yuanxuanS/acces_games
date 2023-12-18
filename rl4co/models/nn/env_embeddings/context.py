@@ -127,14 +127,17 @@ class SVRPContext(EnvContext):
         super(SVRPContext, self).__init__(embedding_dim, embedding_dim + 2)
     
     def _state_embedding(self, embeddings, td):
-        state_embedding = td["vehicle_capacity"] - td["used_capacity"]
+        remain_capacity_embedding = td["vehicle_capacity"] - td["used_capacity"]
         
         is_depot = td["current_node"] == 0
-        current_demand_error = (td["demand"] - td["real_demand"])[torch.arange(is_depot.size(0)),
-                                                                  (td["current_node"] - 1).squeeze()][:, None]  #node idx -1 for :idx start from 0 ; if 0, get -1 idx, but get 0 in next code
-        zeros_ = torch.zeros_like(current_demand_error, device=state_embedding.device)
-        demand_error = torch.where(is_depot, zeros_, current_demand_error)
-        state_embedding = torch.concatenate((state_embedding, demand_error), 1)
+        demand_customers = td["demand"] - td["real_demand"]      # const for every batch. [*batch_size, num_customers]
+        demand_depots = torch.zeros_like(remain_capacity_embedding, device=remain_capacity_embedding.device)    #[*batch_size, 1]
+        demand_locs = torch.concatenate((demand_depots, demand_customers), dim=-1)      # [*batch_size, 1+customers]
+        current_demand_error = torch.gather(demand_locs,
+                                            dim=-1, index=td["current_node"]).to(is_depot.device)
+        # current_demand_error = (td["demand"] - td["real_demand"])[torch.arange(is_depot.size(0)),
+        #                                                           (td["current_node"] - 1).squeeze()][:, None]  #node idx -1 for :idx start from 0 ; if current node is 0, get -1 idx, but get 0 in next code
+        state_embedding = torch.concatenate((remain_capacity_embedding, current_demand_error), -1)
         return state_embedding
 
 class PCTSPContext(EnvContext):

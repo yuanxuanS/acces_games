@@ -11,7 +11,7 @@ def _batchify_single(
 ) -> Union[Tensor, TensorDict]:
     """Same as repeat on dim=0 for Tensordicts as well"""
     s = x.shape
-    return x.expand(repeats, *s).contiguous().view(s[0] * repeats, *s[1:])
+    return x.expand(repeats, *s).contiguous().view(s[0] * repeats, *s[1:])  # expand把一个维度上的大小扩展为更大的； contiguous把张量在内存中的存储连续防止以便利view; 
 
 
 def batchify(
@@ -28,7 +28,7 @@ def batchify(
     """
     shape = [shape] if isinstance(shape, int) else shape
     for s in reversed(shape):
-        x = _batchify_single(x, s) if s > 0 else x
+        x = _batchify_single(x, s) if s > 0 else x      # 把原来 batch_size大小，经过复制，变为batch_size*augment（s）大小。 其中 0+i 和 batch_size+i 处的值相同
     return x
 
 

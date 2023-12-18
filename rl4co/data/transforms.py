@@ -126,7 +126,7 @@ class StateAugmentation(object):
     def __call__(self, td: TensorDict) -> TensorDict:
         td_aug = batchify(td, self.num_augment)
         for feat in self.feats:
-            aug_feat = self.augmentation(td_aug[feat], self.num_augment)
+            aug_feat = self.augmentation(td_aug[feat], self.num_augment)        # 得到POMO的8种transform方式。每种transform的batch个挨着
             td_aug[feat] = aug_feat
             if self.normalize:
                 td_aug[feat] = min_max_normalize(td_aug[feat])
