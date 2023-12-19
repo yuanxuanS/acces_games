@@ -39,7 +39,12 @@ class TabuSearch_svrp:
             batch_costs_real.append(real_cost)        
         print(f"best cost of all data are {batch_costs}")
         print(f"real cost of all data are {batch_costs_real}")
-        return batch_solutions, batch_costs
+        
+        return {
+            "solutions": batch_solutions,
+            "real rewards": batch_costs_real,
+            "real mean reward": sum(batch_costs_real) / len(batch_costs_real)
+        }
     
     def get_real_penalty(self, sol, batch_i):
         

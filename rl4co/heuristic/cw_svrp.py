@@ -12,6 +12,18 @@ from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 class CW_svrp:
     def __init__(self, td) -> None:
         super().__init__()
+        '''
+        td: TensorDict
+        td["locs"]: [batch, num_customer+1, 2], customers and depot(0)
+        td["demand"]:  [batch, num_customer], expected demand
+        td["real_demand"]:  [batch, num_customer]
+        td["used_capacity"]: [batch, 1]
+        td["vehicle_capacity"]: [batch, 1]
+        
+        td["visited"]: [batch, 1, num_customer+1]
+        td["current_node"]: [batch, 1]
+        td["weather"]: [batch, 3]
+        '''
         self.td = td
         self.pair_wise = None       # [batch, num_customer, num_customer]
         self.num_customer = 0
@@ -218,9 +230,18 @@ class CW_svrp:
         
         
         rewards = self._get_reward(self.td, self.routes)     #[batch]
+        mean_reward = rewards.mean()
         print('------CW-----')
-        print(f'Routes found are:{self.routes}, rewards are {rewards} ')
-        return self.routes
+        print(f'Routes found are:{self.routes}, rewards are {rewards}, mean reward is {mean_reward} ')
+        
+        routes = pad_sequence([torch.tensor(r,
+                                                   dtype=torch.int64) 
+                                      for r in self.routes], 
+                                     batch_first=True, padding_value=0)
+        return {"routes":routes,
+                "rewards": rewards,
+                "mean reward": mean_reward
+            }  
 
     def forward_single(self, i):
         '''
@@ -328,8 +349,8 @@ class CW_svrp:
                     # print('\t','route: ', route, ' with load ', self.sum_cap(i, route))
                     pass
             else:
-                print('-------')
-                print('All nodes are included in the routes, algorithm closed')
+                # print('-------')
+                # print('All nodes are included in the routes, algorithm closed')
                 break
 
             remaining = bool(len(node_list) > 0)
