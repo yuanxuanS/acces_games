@@ -139,7 +139,7 @@ class RL4COLitModule(LightningModule):
 
         # Create datasets automatically. If found, this will skip
         if self.data_cfg["generate_data"]:
-            generate_default_datasets(data_dir=self.data_cfg["data_dir"])
+            generate_default_datasets(data_dir=self.data_cfg["data_dir"], data_cfg=self.data_cfg)
 
         self.train_dataset = self.wrap_dataset(
             self.env.dataset(self.data_cfg["train_data_size"], phase="train")

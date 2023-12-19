@@ -380,8 +380,12 @@ def generate_dataset(
                     np.savez(fname, **dataset)
 
 
-def generate_default_datasets(data_dir):
+def generate_default_datasets(data_dir, data_cfg):
     """Generate the default datasets used in the paper and save them to data_dir/problem"""
+    # 传入大小的是，在测试时为了快速验证
+    # generate_dataset(data_dir=data_dir, dataset_size=data_cfg["val_data_size"], name="val", problem="all", seed=4321)
+    # generate_dataset(data_dir=data_dir, dataset_size=data_cfg["test_data_size"], name="test", problem="all", seed=1234)
+    # 平时使用不传入大小的
     generate_dataset(data_dir=data_dir, name="val", problem="all", seed=4321)
     generate_dataset(data_dir=data_dir, name="test", problem="all", seed=1234)
     generate_dataset(

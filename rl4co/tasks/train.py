@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple
+from rl4co.tasks.eval import evaluate_policy
 
 import hydra
 import lightning as L
@@ -76,7 +77,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         log.info("Starting training!")
         trainer.fit(model=model, ckpt_path=cfg.get("ckpt_path"))
 
-        train_metrics = trainer.callback_metrics
+    train_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
         log.info("Starting testing!")
@@ -91,6 +92,25 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # merge train and test metrics
     metric_dict = {**train_metrics, **test_metrics}
+    
+    # 额外增加evaluate 过程
+    if cfg.get("evaluate"):
+        method = cfg.evaluate_method
+        log.info(f"Start evaluation by {method}!")
+        
+        if cfg.get("mode") == "evaluate":
+            ckpt_path = cfg.get("ckpt_path")
+            evaluate_model = model.load_from_checkpoint(ckpt_path)
+            save_fname = cfg.get("evaluate_loc") + "/evalu_"+method+".npz"
+        elif cfg.get("mode") == "train":
+            ckpt_path = trainer.checkpoint_callback.best_model_path
+            evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)
+            save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
+        log.info(f"Best ckpt path: {ckpt_path}")
+        
+        dataset = env.dataset(phase="test")     # 使用test的数据集做evaluation
+        
+        evaluate_policy(env, evaluate_model.policy, dataset, method, save_results=True, save_fname=save_fname)
 
     return metric_dict, object_dict
 
