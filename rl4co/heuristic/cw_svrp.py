@@ -23,6 +23,8 @@ class CW_svrp:
         td["visited"]: [batch, 1, num_customer+1]
         td["current_node"]: [batch, 1]
         td["weather"]: [batch, 3]
+        
+        forward(): call this to get all solutions, a nested list, call convert_to_fit_npz as for savez
         '''
         self.td = td
         self.pair_wise = None       # [batch, num_customer, num_customer]
