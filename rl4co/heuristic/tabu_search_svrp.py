@@ -1,5 +1,8 @@
 from tensordict.tensordict import TensorDict
 import torch
+from torch.nn.utils.rnn import pad_sequence
+from rl4co.utils.heuristic_utils import convert_to_fit_npz
+
 import random
 
 class TabuSearch_svrp:
@@ -40,11 +43,14 @@ class TabuSearch_svrp:
         print(f"best cost of all data are {batch_costs}")
         print(f"real cost of all data are {batch_costs_real}")
         
+        batch_solutions = convert_to_fit_npz(batch_solutions)
+      
         return {
             "solutions": batch_solutions,
             "real rewards": batch_costs_real,
             "real mean reward": sum(batch_costs_real) / len(batch_costs_real)
         }
+    
     
     def get_real_penalty(self, sol, batch_i):
         
@@ -91,7 +97,7 @@ class TabuSearch_svrp:
         return self.distance_matrix
   
     def forward_single(self, instance_td: TensorDict, n_iters=2000):
-        "get solution of an instance"
+        "get solution of an instance: a non-nested list"
         self.single_instance = instance_td
         self.distance_matrix = self._get_distance_matrix(instance_td)        # [num_p, num_p] ,symatric 
         self.best_sol = self.generate_greedy_solution(instance_td)
@@ -142,6 +148,8 @@ class TabuSearch_svrp:
                     del self.TABU[s]
 
             n_iters -= 1
+        
+       
         return self.best_sol, self.best_cost
     
     def get_cost(self, solution):

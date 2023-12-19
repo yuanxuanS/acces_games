@@ -7,7 +7,7 @@ from rl4co.utils.trainer import RL4COTrainer
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
-
+from rl4co.utils.heuristic_utils import convert_to_fit_npz
 
 class CW_svrp:
     def __init__(self, td) -> None:
@@ -234,10 +234,7 @@ class CW_svrp:
         print('------CW-----')
         print(f'Routes found are:{self.routes}, rewards are {rewards}, mean reward is {mean_reward} ')
         
-        routes = pad_sequence([torch.tensor(r,
-                                                   dtype=torch.int64) 
-                                      for r in self.routes], 
-                                     batch_first=True, padding_value=0)
+        routes = convert_to_fit_npz(self.routes)
         return {"routes":routes,
                 "rewards": rewards,
                 "mean reward": mean_reward
