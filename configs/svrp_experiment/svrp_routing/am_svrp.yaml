@@ -19,12 +19,12 @@ logger:
     offline: True
 
 model:
-  batch_size: 10 #512
-  val_batch_size: 10 #1024
-  test_batch_size: 10   #1024
-  train_data_size: 100  #1_280_000
-  val_data_size: 100  #10_000
-  test_data_size: 100 #10_000
+  batch_size: 512 #10 #
+  val_batch_size: 1024  #10 #
+  test_batch_size: 1024 #10   #
+  train_data_size: 1_280_000  #100  #
+  val_data_size: 10_000 #100  #
+  test_data_size: 10_000  #100 #
   optimizer_kwargs:
     lr: 1e-4
     weight_decay: 0
@@ -33,11 +33,12 @@ model:
   lr_scheduler_kwargs:
     milestones: [80, 95]
     gamma: 0.1
-  policy_kwargs:
-    test_decode_type: "multistart_sampling"
+  # policy_kwargs:
+  #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 3  #100
+  max_epochs: 100 #3 #
 
 seed: 1234
 
+evaluate_method: "greedy"   #["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]

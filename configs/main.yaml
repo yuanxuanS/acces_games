@@ -15,8 +15,8 @@ defaults:
 
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
-  - svrp_experiment: svrp_routing/am_svrp.yaml # set baseline experiment
-
+  # - experiment: routing/am.yaml # set baseline experiment
+  - svrp_experiment: svrp_routing/am_svrp.yaml
   # config for hyperparameter optimization
   - hparams_search: null
 
@@ -26,6 +26,9 @@ defaults:
 
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
+
+  # evaluate配置: train的时候必须使用default
+  - evaluate: default.yaml    #greedy_eval.yaml
 
 # task name, determines output directory path
 mode: "train"
@@ -60,3 +63,7 @@ metrics:
   val: ["reward"]
   test: ["reward"]
   log_on_step: True
+
+# 增加 evaluation 参数 
+evaluate: True
+evaluate_method: "greedy"

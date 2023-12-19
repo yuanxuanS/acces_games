@@ -1,0 +1,22 @@
+# @package _global_
+
+# default evaluate setup
+# other evaluate configs can inherit from this one
+
+# overwrite task name so debugging logs are stored in separate folder
+task_name: "evaluate"
+
+# disable callbacks and loggers during debugging
+callbacks: null
+
+train: False
+
+test: False 
+
+mode: "evaluate"
+# in evaluate mode, must give these params!!!!!
+evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2023-12-18_22-04-16"
+ckpt_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2023-12-18_22-04-16/rl4co/rqld3w8c/checkpoints/epoch=2-step=30.ckpt"
+evaluate_loc: "${evaluate_savedir}"
+evaluate_method: "augment"   # ["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]
+
