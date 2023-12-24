@@ -6,7 +6,8 @@ from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 from tensordict.tensordict import TensorDict
 from typing import Optional
 from rl4co.data.utils import load_npz_to_tensordict
-
+import time
+import torch.multiprocessing as mp
 
 log = get_pylogger(__name__)
 
@@ -70,31 +71,115 @@ class SVRPEnv(CVRPEnv):
 
     def get_reward(self, td: TensorDict, actions: TensorDict) -> TensorDict:
         # get the solution's penaltied idx
-        loc_idx_penaltied = self.get_penalty_loc_idx(td, actions)   #[batch, penalty_number]
-
+        loc_idx_penaltied = self.get_penalty_loc_idx(td, actions)   #[batch, num-customer]
         # Gather dataset in order of tour
         depot = td["locs"][..., 0:1, :]
-        depot_batch = depot.repeat(1, loc_idx_penaltied.size(1), 1) # [batch,  penalty_number, 2]
+        depot_batch = depot.repeat(1, loc_idx_penaltied.size(1), 1) # [batch,  num_customer, 2]
         
         # get penaltied lcoations
-        locs_penalty = gather_by_index(td["locs"], loc_idx_penaltied)       #[batch, penalty_number, 2]
+        locs_penalty = td["locs"][..., 1:, :]* loc_idx_penaltied[..., None]       #[batch, num_customer, 2]
         # get 0 pad mask
-        posit = loc_idx_penaltied > 0  #[batch, penalty number]
-        posit = posit[:,:, None]    #[batch, penalty number, 1]
-        posit = posit.repeat(1, 1, 2)   #[batch, penalty number, 2]
+        posit = loc_idx_penaltied > 0  #[batch, num_customer]
+        posit = posit[:,:, None]    #[batch, num_customer, 1]
+        posit = posit.repeat(1, 1, 2)   #[batch, num_customer, 2]
         locs_penalty = torch.where(posit, locs_penalty, depot_batch)
         
         locs_ordered = torch.cat([depot, gather_by_index(td["locs"], actions)], dim=1)
         cost_orig = -get_tour_length(locs_ordered)
         cost_penalty = -get_distance(depot_batch, locs_penalty).sum(-1) * 2
-        # print(f"orig is {cost_orig}, penalty is {cost_penalty}")
-        return cost_penalty + cost_orig
+        print(f"new version: orig is {cost_orig}, penalty is {cost_penalty}")
+        
+        
+        ## orignal version
+        # get the solution's penaltied idx
+        loc_idx_penaltied_test = self.get_penalty_loc_idx_test(td, actions)   #[batch, penalty_number]
 
+        # Gather dataset in order of tour
+        depot_test = td["locs"][..., 0:1, :]
+        depot_batch_test = depot_test.repeat(1, loc_idx_penaltied_test.size(1), 1) # [batch,  penalty_number, 2]
+        
+        # get penaltied lcoations
+        locs_penalty_test = gather_by_index(td["locs"], loc_idx_penaltied_test)       #[batch, penalty_number, 2]
+        # get 0 pad mask
+        posit_test = loc_idx_penaltied_test > 0  #[batch, penalty number]
+        posit_test = posit_test[:,:, None]    #[batch, penalty number, 1]
+        posit_test = posit_test.repeat(1, 1, 2)   #[batch, penalty number, 2]
+        locs_penalty_test = torch.where(posit_test, locs_penalty_test, depot_batch_test)
+        
+        locs_ordered_test = torch.cat([depot_test, gather_by_index(td["locs"], actions)], dim=1)
+        cost_orig_test = -get_tour_length(locs_ordered_test)
+        cost_penalty_test = -get_distance(depot_batch_test, locs_penalty_test).sum(-1) * 2
+        # print(f"orignal version :orig is {cost_orig_test}, penalty is {cost_penalty_test}")
+        return cost_penalty + cost_orig
+    
+    @staticmethod
+    def get_minibatch_penalty(b_index, td, actions, used_cap, d, shared_penalty_loc_idx):
+        '''
+        50 a minibatch
+        '''
+        for b in range(b_index, min(b_index+5, actions.size(0))):
+            penalty_loc_idx = []
+            for i in range(actions.size(1)):
+                used_cap[b, 0] += d[
+                    b, i
+                ]  # This will reset/make capacity negative if i == 0, e.g. depot visited
+                # Cannot use less than 0
+                used_cap[used_cap < 0] = 0
+                if used_cap[b, 0] > td["vehicle_capacity"][b,] + 1e-5:
+                    # print("Used more than capacity")
+                    used_cap[b, 0] = d[b, i]
+                    penalty_loc_idx.append(actions[b, i])
+            shared_penalty_loc_idx[b] = penalty_loc_idx
+            
+    @staticmethod
+    def get_penalty_loc_idx_test(td: TensorDict, actions: torch.Tensor):
+        # Check if tour is valid, i.e. contain 0 to n-1
+        batch_size, graph_size = td["demand"].size()
+        sorted_pi = actions.data.sort(1)[0]
+
+        # Sorting it should give all zeros at front and then 1...n
+        assert (
+            torch.arange(1, graph_size + 1, out=sorted_pi.data.new())
+            .view(1, -1)
+            .expand(batch_size, graph_size)
+            == sorted_pi[:, -graph_size:]
+        ).all() and (sorted_pi[:, :-graph_size] == 0).all(), "Invalid tour"
+
+        # Visiting depot resets capacity so we add demand = -capacity (we make sure it does not become negative)
+        real_demand_with_depot = torch.cat((-td["vehicle_capacity"], td["real_demand"]), 1)
+        d = real_demand_with_depot.gather(1, actions)
+
+        start_t = time.time()
+        batch_penalty_loc_idx = []
+        used_cap = torch.zeros((td["demand"].size(0), 1), device=td["demand"].device)
+        for b in range(actions.size(0)):
+            penalty_loc_idx = []
+            for i in range(actions.size(1)):
+                used_cap[b, 0] += d[
+                    b, i
+                ]  # This will reset/make capacity negative if i == 0, e.g. depot visited
+                # Cannot use less than 0
+                used_cap[used_cap < 0] = 0
+                if used_cap[b, 0] > td["vehicle_capacity"][b,] + 1e-5:
+                    # print("Used more than capacity")
+                    used_cap[b, 0] = d[b, i]
+                    penalty_loc_idx.append(actions[b, i])
+            batch_penalty_loc_idx.append(penalty_loc_idx)
+        end_t = time.time()
+        print(f"time of for loop opera: {end_t - start_t}")
+        loc_idx_penalty = pad_sequence([torch.tensor(sublist, device=td["demand"].device, 
+                                                   dtype=torch.int64) 
+                                      for sublist in batch_penalty_loc_idx], 
+                                     batch_first=True, padding_value=0)
+        return loc_idx_penalty
     @staticmethod
     def get_penalty_loc_idx(td: TensorDict, actions: torch.Tensor):
         """Check that solution is valid: nodes are not visited twice except depot.
         if capacity is not exceeded, record the loc idx
         return penaltied location idx, [batch, penalty_number]
+        
+        review:
+            return penaltied_idx: [batch, num_customer], if node is penaltied, set 1
         """
         # Check if tour is valid, i.e. contain 0 to n-1
         batch_size, graph_size = td["demand"].size()
@@ -112,6 +197,7 @@ class SVRPEnv(CVRPEnv):
         real_demand_with_depot = torch.cat((-td["vehicle_capacity"], td["real_demand"]), 1)
         d = real_demand_with_depot.gather(1, actions)
 
+        start_t = time.time()
         batch_penalty_loc_idx = []
         used_cap = torch.zeros((td["demand"].size(0), 1), device=td["demand"].device)
         for b in range(actions.size(0)):
@@ -127,13 +213,59 @@ class SVRPEnv(CVRPEnv):
                     used_cap[b, 0] = d[b, i]
                     penalty_loc_idx.append(actions[b, i])
             batch_penalty_loc_idx.append(penalty_loc_idx)
-            
+        end_t = time.time()
+        print(f"time of for loop opera: {end_t - start_t}")
         loc_idx_penalty = pad_sequence([torch.tensor(sublist, device=td["demand"].device, 
                                                    dtype=torch.int64) 
                                       for sublist in batch_penalty_loc_idx], 
                                      batch_first=True, padding_value=0)
-
-        return loc_idx_penalty
+        
+            
+        # start_t2 = time.time()
+        # batch_penalty_loc_idx = []
+        # used_cap = torch.zeros((td["demand"].size(0), 1), device=td["demand"].device)
+        # used_cap.share_memory_()
+        # d.share_memory_()
+        # actions.share_memory_()
+        
+        # manager = mp.Manager()
+        # shared_penalty_loc_idx = manager.list()
+        # for _ in range(actions.size(0)):
+        #     shared_penalty_loc_idx.append([])
+        # processes = []
+        # for b in range(int(actions.size(0) / 50) + 1):
+        #     process = mp.Process(target =SVRPEnv.get_minibatch_penalty, args=(b*50, td, actions, used_cap, d, shared_penalty_loc_idx))
+        #     processes.append(process)
+            
+        # for process in processes:
+        #     process.start()
+            
+        # for process in processes:
+        #     process.join()
+        
+        # batch_penalty_loc_idx = list(shared_penalty_loc_idx)
+        # end_t2 = time.time()
+        # print(f"time of multiprocess opera: {end_t2 - start_t2}")
+        start_3 = time.time()
+        used_cap = torch.zeros((td["demand"].size(0), 1), device=td["demand"].device)
+        penaltied_idx = torch.zeros_like(td["demand"], device=td["demand"].device)      # [batch, num_customer]
+        for i in range(actions.size(1)):
+            used_cap[:, 0] += d[
+                    :, i
+                ]  # This will reset/make capacity negative if i == 0, e.g. depot visited
+                # Cannot use less than 0
+            used_cap[used_cap < 0] = 0
+            exceed_cap_bool = used_cap[:, 0] > td["vehicle_capacity"][:,0] + 1e-5        # 1 dim
+            if any(exceed_cap_bool):
+                # print("Used more than capacity")
+                exceed_idx = torch.nonzero(exceed_cap_bool)     # [exceed_data_idx, 1]
+                penaltied_node = actions[exceed_idx, i] - 1     # [exceed_data_idx, 1], in"actions",customer node start from 1, substract 1 when be idx
+                penaltied_idx[exceed_idx, penaltied_node] = 1        # set exceed idx to 1
+                used_cap[exceed_idx, 0] = d[exceed_idx, i]
+        end_3 = time.time()
+        print(f"penalty node idx is {penaltied_idx[0]}")
+        print(f"time of one loop: {end_3 - start_3}")
+        return penaltied_idx
 
     def generate_data(self, batch_size, ) -> TensorDict:
         # Batch size input check
