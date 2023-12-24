@@ -47,7 +47,7 @@ class SVRPEnv(CVRPEnv):
         
         self.generate_method = generate_method
         assert self.generate_method in ["uniform", "modelize"], "way of generate stochastic data is invalid"
-        
+
     @staticmethod
     def load_data(fpath, batch_size=[]):
         """Dataset loading from file
@@ -56,6 +56,8 @@ class SVRPEnv(CVRPEnv):
         td_load = load_npz_to_tensordict(fpath)
         td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
         td_load.set("stochastic_demand", td_load["stochastic_demand"] / td_load["capacity"][:, None])
+        # for context embedding usage
+        td_load.set("delta_demand_customer", td_load["demand"] - td_load["stochastic_demand"])
         return td_load
     
     @property
@@ -182,9 +184,7 @@ class SVRPEnv(CVRPEnv):
                                                    weather[:, None, :].
                                                    repeat(1, self.num_loc, 1),
                                                    None).squeeze(-1).float().to(self.device)
-            # .float().to(self.device)
 
-        # print(f"demand is {demand}\n stochastic demand is {stochastic_demand}")
         # Support for heterogeneous capacity if provided
         if not isinstance(self.capacity, torch.Tensor):
             capacity = torch.full((*batch_size,), self.capacity, device=self.device)
@@ -201,6 +201,7 @@ class SVRPEnv(CVRPEnv):
                 "stochastic_demand": stochastic_demand / CAPACITIES[self.num_loc],
                 "weather": weather,
                 "capacity": capacity,       # =1
+                "delta_demand_customer": (demand - stochastic_demand) / CAPACITIES[self.num_loc],
             },
             batch_size=batch_size,
             device=self.device,
@@ -275,10 +276,10 @@ class SVRPEnv(CVRPEnv):
     @staticmethod
     def get_action_mask(td: TensorDict) -> torch.Tensor:
         # cannot mask exceeding node in svrp
-        exceeds_cap = td["demand"][:, None, :] + td["used_capacity"][..., None] > 1.0
+        # exceeds_cap = td["demand"][:, None, :] + td["used_capacity"][..., None] > 1.0
 
         # Nodes that cannot be visited are already visited
-        mask_loc = td["visited"][..., 1:].to(exceeds_cap.dtype)
+        mask_loc = td["visited"][..., 1:].to(torch.bool)
 
         # Cannot visit the depot if just visited and still unserved nodes
         mask_depot = (td["current_node"] == 0) & ((mask_loc == 0).int().sum(-1) > 0)
@@ -319,6 +320,7 @@ class SVRPEnv(CVRPEnv):
                     dtype=torch.uint8,
                     device=self.device,
                 ),
+                "delta_demand_customer": td["delta_demand_customer"],
             },
             batch_size=batch_size,
         )

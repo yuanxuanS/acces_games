@@ -127,12 +127,12 @@ class SVRPContext(EnvContext):
         super(SVRPContext, self).__init__(embedding_dim, embedding_dim + 2)
     
     def _state_embedding(self, embeddings, td):
+        
         remain_capacity_embedding = td["vehicle_capacity"] - td["used_capacity"]
         
         is_depot = td["current_node"] == 0
-        demand_customers = td["demand"] - td["real_demand"]      # const for every batch. [*batch_size, num_customers]
         demand_depots = torch.zeros_like(remain_capacity_embedding, device=remain_capacity_embedding.device)    #[*batch_size, 1]
-        demand_locs = torch.concatenate((demand_depots, demand_customers), dim=-1)      # [*batch_size, 1+customers]
+        demand_locs = torch.concatenate((demand_depots, td["delta_demand_customer"]), dim=-1)      # [*batch_size, 1+customers]
         current_demand_error = torch.gather(demand_locs,
                                             dim=-1, index=td["current_node"]).to(is_depot.device)
         # current_demand_error = (td["demand"] - td["real_demand"])[torch.arange(is_depot.size(0)),

@@ -73,6 +73,7 @@ class AutoregressiveDecoder(nn.Module):
         if isinstance(env_name, RL4COEnvBase):
             env_name = env_name.name
         self.env_name = env_name
+        
         self.embedding_dim = embedding_dim
         self.num_heads = num_heads
 
@@ -161,7 +162,8 @@ class AutoregressiveDecoder(nn.Module):
         if isinstance(env, str):
             env_name = self.env_name if env is None else env
             env = get_env(env_name)
-
+            # caculate once for context embedding of this batch, just in svrp
+         
         # Multi-start decoding: first action is chosen by ad-hoc node selection
         if num_starts > 1 or "multistart" in decode_type:
             action = self.select_start_nodes_fn(td, env, num_nodes=num_starts)
@@ -178,6 +180,7 @@ class AutoregressiveDecoder(nn.Module):
             outputs.append(log_p)
             actions.append(action)
 
+        
         # Main decoding: loop until all sequences are done
         while not td["done"].all():
             log_p, mask = self._get_log_p(cached_embeds, td, softmax_temp, num_starts)
@@ -256,7 +259,9 @@ class AutoregressiveDecoder(nn.Module):
         # Unbatchify to [batch_size, num_starts, ...]. Has no effect if num_starts = 0
         td_unbatch = unbatchify(td, num_starts)
 
+        
         step_context = self.context_embedding(cached.node_embeddings, td_unbatch)
+    
         glimpse_q = step_context + cached.graph_context
         glimpse_q = glimpse_q.unsqueeze(1) if glimpse_q.ndim == 2 else glimpse_q
 
