@@ -12,7 +12,8 @@ from omegaconf import DictConfig
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
-
+from memory_profiler import profile
+from guppy import hpy
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -20,6 +21,7 @@ log = utils.get_pylogger(__name__)
 
 
 @utils.task_wrapper
+# @profile(stream=open('log_mem_cvrp50.log', 'w+'))
 def run(cfg: DictConfig) -> Tuple[dict, dict]:
     """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
@@ -31,7 +33,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
     """
-
+    # h = hpy().heap()
     # set seed for random number generators in pytorch, numpy and python.random
     if cfg.get("seed"):
         L.seed_everything(cfg.seed, workers=True)

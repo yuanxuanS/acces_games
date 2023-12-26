@@ -162,8 +162,7 @@ class AutoregressiveDecoder(nn.Module):
         if isinstance(env, str):
             env_name = self.env_name if env is None else env
             env = get_env(env_name)
-            # caculate once for context embedding of this batch, just in svrp
-         
+
         # Multi-start decoding: first action is chosen by ad-hoc node selection
         if num_starts > 1 or "multistart" in decode_type:
             action = self.select_start_nodes_fn(td, env, num_nodes=num_starts)

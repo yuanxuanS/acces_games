@@ -12,7 +12,7 @@ from rl4co.data.generate_data import generate_default_datasets
 from rl4co.envs.common.base import RL4COEnvBase
 from rl4co.utils.optim_helpers import create_optimizer, create_scheduler
 from rl4co.utils.pylogger import get_pylogger
-
+from memory_profiler import profile
 log = get_pylogger(__name__)
 
 
@@ -117,6 +117,8 @@ class RL4COLitModule(LightningModule):
         self.test_metrics = metrics.get("test", ["reward"])
         self.log_on_step = metrics.get("log_on_step", True)
 
+    # @profile(stream=open('log_mem3_setup_fit2.log', 'w+'))
+    # @profile
     def setup(self, stage="fit"):
         """Base LightningModule setup method. This will setup the datasets and dataloaders
 
@@ -124,7 +126,6 @@ class RL4COLitModule(LightningModule):
             We also send to the loggers all hyperparams that are not `nn.Module` (i.e. the policy).
             Apparently PyTorch Lightning does not do this by default.
         """
-
         log.info("Setting up batch sizes for train/val/test")
         train_bs, val_bs, test_bs = (
             self.data_cfg["batch_size"],
@@ -150,6 +151,7 @@ class RL4COLitModule(LightningModule):
         )
         self.dataloader_names = None
         self.setup_loggers()
+            
         self.post_setup_hook()
 
     def setup_loggers(self):
