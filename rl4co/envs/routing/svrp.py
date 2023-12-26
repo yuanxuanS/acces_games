@@ -8,9 +8,11 @@ from typing import Optional
 from rl4co.data.utils import load_npz_to_tensordict
 import time
 import torch.multiprocessing as mp
-
+from memory_profiler import profile
+import gc
+import sys
 log = get_pylogger(__name__)
-
+from guppy import hpy
 # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
 CAPACITIES = {
     10: 20.0,
@@ -56,8 +58,6 @@ class SVRPEnv(CVRPEnv):
         td_load = load_npz_to_tensordict(fpath)
         td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
         td_load.set("stochastic_demand", td_load["stochastic_demand"] / td_load["capacity"][:, None])
-        # for context embedding usage
-        td_load.set("delta_demand_customer", td_load["demand"] - td_load["stochastic_demand"])
         return td_load
     
     @property
@@ -141,7 +141,8 @@ class SVRPEnv(CVRPEnv):
         end_3 = time.time()
         # print(f"time of one loop: {end_3 - start_3}")
         return penaltied_idx
-
+    
+    # @profile(stream=open('log_mem_svrp_generate_data.log', 'w+'))  
     def generate_data(self, batch_size, ) -> TensorDict:
         # Batch size input check
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
@@ -171,6 +172,7 @@ class SVRPEnv(CVRPEnv):
         
         #  E(stochastic demand) = E(demand)
         if self.generate_method == "uniform":
+            # print(f"generate data by uniform")
             stochastic_demand = (
                 torch.FloatTensor(*batch_size, self.num_loc)
                 .uniform_(self.min_demand - 1, self.max_demand - 1)
@@ -180,9 +182,9 @@ class SVRPEnv(CVRPEnv):
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
-            stochastic_demand = self.get_stoch_var(demand[..., None], 
+            stochastic_demand = self.get_stoch_var(demand.to("cpu"), 
                                                    weather[:, None, :].
-                                                   repeat(1, self.num_loc, 1),
+                                                   repeat(1, self.num_loc, 1).to("cpu"),
                                                    None).squeeze(-1).float().to(self.device)
 
         # Support for heterogeneous capacity if provided
@@ -201,32 +203,43 @@ class SVRPEnv(CVRPEnv):
                 "stochastic_demand": stochastic_demand / CAPACITIES[self.num_loc],
                 "weather": weather,
                 "capacity": capacity,       # =1
-                "delta_demand_customer": (demand - stochastic_demand) / CAPACITIES[self.num_loc],
             },
             batch_size=batch_size,
             device=self.device,
         )
 
     @staticmethod
+    # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
     def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
-        n_problems,n_nodes,shape = inp.shape
-        T = inp/A
+        # h = hpy().heap()
+        if inp.dim() <= 2:
+            inp_ =  inp[..., None]
+        else:
+            inp_ = inp.clone()
+
+        n_problems,n_nodes,shape = inp_.shape
+        T = inp_/A
+
+        # var_noise = T*G
+        # noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        # noise = var_noise*noise     # multivariable normal distr, var_noise mean
+        # noise = torch.clamp(noise, min=-var_noise)
         
         var_noise = T*G
-        noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
-        noise = var_noise*noise     # multivariable normal distr, var_noise mean
+
+        noise = var_noise*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
         noise = torch.clamp(noise, min=-var_noise)
-        
+
         var_w = T*B
         # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas /= alphas.sum(axis=2)[:, :, None, :]       # normalize alpha to 0-1
+        alphas.div_(alphas.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
         alphas *= sum_alpha     # alpha value [4.5*var_w]
         alphas = torch.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
         signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
-        signs = torch.where(signs > 0.5)
-        alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        # signs = torch.where(signs > 0.5)
+        alphas[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
         w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
         # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
@@ -234,7 +247,13 @@ class SVRPEnv(CVRPEnv):
         
         tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w)
-        out = inp + tot_w + noise
+        out = inp_ + tot_w + noise
+        
+        # del tot_w, noise
+        del var_noise, sum_alpha, alphas, signs, w1, w2, tot_w
+        del T, noise, var_w
+        del inp_
+        gc.collect()
         
         return out
     
@@ -320,7 +339,6 @@ class SVRPEnv(CVRPEnv):
                     dtype=torch.uint8,
                     device=self.device,
                 ),
-                "delta_demand_customer": td["delta_demand_customer"],
             },
             batch_size=batch_size,
         )

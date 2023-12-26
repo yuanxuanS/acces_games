@@ -7,7 +7,8 @@ import numpy as np
 
 from rl4co.data.utils import check_extension
 from rl4co.utils.pylogger import get_pylogger
-
+from memory_profiler import profile
+import gc
 log = get_pylogger(__name__)
 
 
@@ -80,7 +81,7 @@ def generate_vrp_data(dataset_size, vrp_size, capacities=None):
         ),  # Demand, uniform integer 1 ... 9
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
-
+# @profile(stream=open('logmem_generate_svrp_data.log', 'w+'))
 def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
     # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
     CAPACITIES = {
@@ -140,16 +141,29 @@ def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacit
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
 
+# @profile(stream=open('logmem_get_stoch_var_gendata_rewrite.log', 'w+'))
 def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
     n_problems,n_nodes,shape = inp.shape
     T = inp/A
     
-    var_noise = T*G
-    noise = np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
-    noise = var_noise*noise     # multivariable normal distr, var_noise mean
-    noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
-        
+    # var_noise = T*G
+    # noise = np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
+    # noise = var_noise*noise     # multivariable normal distr, var_noise mean
+    # noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
+    
+    noise = T*G*np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
+    noise = np.clip(noise, a_min=-T*G, a_max=T*G)
+    
     var_w = T*B
+    # sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
+    # alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
+    # alphas /= alphas.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
+    # alphas *= sum_alpha     # alpha value [4.5*var_w]
+    # alphas = np.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
+    # signs = np.random.random((n_problems, n_nodes, 9, shape))
+    # signs = np.where(signs > 0.5)
+    # alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+    
     # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
     sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
     alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
@@ -157,16 +171,28 @@ def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
     alphas *= sum_alpha     # alpha value [4.5*var_w]
     alphas = np.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
     signs = np.random.random((n_problems, n_nodes, 9, shape))
-    signs = np.where(signs > 0.5)
-    alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+    alphas[np.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
-    w1 = np.repeat(w, 3, axis=2)[..., np.newaxis]       # [batch, nodes, 3*repeat3=9, 1]
-    # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
-    w2 = np.concatenate([w, np.roll(w,shift=1,axis=2), np.roll(w,shift=2,axis=2)], 2)[..., np.newaxis]
+    # w1 = np.repeat(w, 3, axis=2)[..., np.newaxis]       # [batch, nodes, 3*repeat3=9, 1]
+    # # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
+    # w2 = np.concatenate([w, np.roll(w,shift=1,axis=2), np.roll(w,shift=2,axis=2)], 2)[..., np.newaxis]
     
-    tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+    # tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+    # tot_w = np.clip(tot_w, a_min=-var_w, a_max=var_w)
+    
+   
+    tot_w = (alphas*
+             np.repeat(w, 3, axis=2)[..., np.newaxis]*
+             np.concatenate([w, np.roll(w,shift=1,axis=2), 
+                             np.roll(w,shift=2,axis=2)], 2)[..., np.newaxis]
+            ).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
     tot_w = np.clip(tot_w, a_min=-var_w, a_max=var_w)
+    
     out = inp + tot_w + noise
+    
+    del sum_alpha, alphas, signs, tot_w
+    del T, noise, var_w
+    gc.collect()
         
     return out
 
@@ -299,7 +325,7 @@ def generate_mdpp_data(
         "action_mask": available.astype(bool),
     }
 
-
+# @profile(stream=open('log_mem3_shared_step_trainuniform.log', 'w+'))
 def generate_dataset(
     filename=None,
     data_dir="data",
@@ -378,8 +404,7 @@ def generate_dataset(
                     # Save to disk as dict
                     log.info("Saving {} dataset to {}".format(problem, fname))
                     np.savez(fname, **dataset)
-
-
+# @profile(stream=open('log_mem3_genedata.log', 'w+'))
 def generate_default_datasets(data_dir, data_cfg):
     """Generate the default datasets used in the paper and save them to data_dir/problem"""
     # 传入大小的是，在测试时为了快速验证
