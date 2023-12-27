@@ -4,13 +4,13 @@ from rl4co.tasks.eval_heuristic import evaluate_baseline
 from rl4co.heuristic import CW_svrp, TabuSearch_svrp
 import numpy as np
 
-env = SVRPEnv(num_loc=20) 
+env = SVRPEnv(num_loc=50) 
 # 使用test的数据集做evaluation
-dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize20_test_seed1234.npz"
+dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize50_test_seed1234.npz"
 # dataset_td = env.dataset(phase="test", filename=dataset_f)     
         
 baseline = "tabu"
-save_fname = "tabu_results.npz"
+save_fname = "tabu_results_svrp50.npz"
 evaluate_baseline(env, dataset_f, baseline, save_results=True, save_fname=save_fname)
 
 # # test

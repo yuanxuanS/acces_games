@@ -225,6 +225,7 @@ class CW_svrp:
         self.__get_savings()
         
         for i in range(self.data_nodes.size(0)):
+            print(f"instance {i}")
             single_routes = self.forward_single(i)
             # concat all routes to a route of an instance
             single_routes = [action for routes in single_routes for action in routes]       # actions with multiply depots

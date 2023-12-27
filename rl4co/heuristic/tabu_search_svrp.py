@@ -2,7 +2,7 @@ from tensordict.tensordict import TensorDict
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from rl4co.utils.heuristic_utils import convert_to_fit_npz
-
+import time
 import random
 
 class TabuSearch_svrp:
@@ -27,7 +27,7 @@ class TabuSearch_svrp:
         search according expected demand, but evaluate it with real demand
         '''
         print('------Tabu search-----')
-
+        time_start = time.time()
         batch_solutions = list()
         batch_costs = list()
         batch_costs_real = list()       
@@ -44,7 +44,8 @@ class TabuSearch_svrp:
         print(f"real cost of all data are {batch_costs_real}")
         
         batch_solutions = convert_to_fit_npz(batch_solutions)
-      
+        time_end = time.time()
+        print(f"time is {time_end - time_start}")
         return {
             "solutions": batch_solutions,
             "real rewards": batch_costs_real,
