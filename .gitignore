@@ -4,7 +4,7 @@
 *.ckpt
 README.md
 # only at the project root (leading /)
-/data 
+# /data 
 *.npz
 *.npy
 *.pkl
