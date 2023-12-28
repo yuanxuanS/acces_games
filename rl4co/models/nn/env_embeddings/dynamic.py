@@ -1,5 +1,5 @@
 import torch.nn as nn
-
+import torch
 from rl4co.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -16,8 +16,10 @@ def env_dynamic_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": StaticEmbedding,
+        "csp": CSPDynamicEmbedding,
         "atsp": StaticEmbedding,
         "cvrp": StaticEmbedding,
+        "svrp": StaticEmbedding,
         "sdvrp": SDVRPDynamicEmbedding,
         "pctsp": StaticEmbedding,
         "spctsp": StaticEmbedding,
@@ -67,4 +69,27 @@ class SDVRPDynamicEmbedding(nn.Module):
         glimpse_key_dynamic, glimpse_val_dynamic, logit_key_dynamic = self.projection(
             demands_with_depot
         ).chunk(3, dim=-1)
+        return glimpse_key_dynamic, glimpse_val_dynamic, logit_key_dynamic
+
+
+class CSPDynamicEmbedding(nn.Module):
+    """Dynamic embedding for the Covering Salesman Problems (TSP).
+    Embed the following node features to the embedding space:
+        - guidence_vec: guidence value of the customers
+    The guidence value is used to modify the query, key and value vectors of the attention mechanism
+    based on the current covered state of the nodes (which is changing during the decoding step).
+    """
+
+    def __init__(self, embedding_dim, linear_bias=True):
+        super(CSPDynamicEmbedding, self).__init__()
+        self.proj_guidence = nn.Linear(1, 3 * embedding_dim, linear_bias, dtype=torch.float32)
+
+    def forward(self, td):
+
+        (glimpse_key_dynamic, 
+         glimpse_val_dynamic, 
+         logit_key_dynamic 
+         )= self.proj_guidence(td["guidence_vec"].unsqueeze(-2)
+                               .transpose(1, 2).float()).chunk(3, dim=-1)  # [batch, num_loc, 3*embed_dim] -> [batch, num_loc, embed_dim] for every
+
         return glimpse_key_dynamic, glimpse_val_dynamic, logit_key_dynamic
