@@ -145,7 +145,7 @@ class LogitAttention(nn.Module):
         embed_dim: total dimension of the model
         num_heads: number of heads
         tanh_clipping: tanh clipping value
-        mask_inner: whether to mask inner attention
+        mask_inner: whether to mask inner attention， 论文中相邻node mask为-inf
         mask_logits: whether to mask logits
         normalize: whether to normalize logits
         softmax_temp: softmax temperature
@@ -158,7 +158,7 @@ class LogitAttention(nn.Module):
         embed_dim: int,
         num_heads: int,
         tanh_clipping: float = 10.0,
-        mask_inner: bool = True,
+        mask_inner: bool = True,        
         mask_logits: bool = True,
         normalize: bool = True,
         softmax_temp: float = 1.0,
@@ -179,8 +179,8 @@ class LogitAttention(nn.Module):
 
     def forward(self, query, key, value, logit_key, mask, softmax_temp=None):
         # Compute inner multi-head attention with no projections.
-        heads = self._inner_mha(query, key, value, mask)
-        glimpse = self.project_out(heads)
+        heads = self._inner_mha(query, key, value, mask)            #q k v经过 heads个分别映射输出
+        glimpse = self.project_out(heads)   
 
         # Batch matrix multiplication to compute logits (batch_size, num_steps, graph_size)
         # bmm is slightly faster than einsum and matmul

@@ -16,6 +16,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
     embedding_registry = {
         "tsp": TSPContext,
         "atsp": TSPContext,
+        "csp": TSPContext,
         "cvrp": VRPContext,
         "svrp": SVRPContext,
         "sdvrp": VRPContext,

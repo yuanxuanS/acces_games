@@ -13,6 +13,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": TSPInitEmbedding,
+        "csp": TSPInitEmbedding,
         "atsp": TSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
         "svrp": SVRPInitEmbedding,
