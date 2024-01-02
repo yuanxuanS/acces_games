@@ -182,7 +182,8 @@ class SVRPEnv(CVRPEnv):
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
-            stochastic_demand = self.get_stoch_var(demand.to("cpu"), 
+            stochastic_demand = self.get_stoch_var(demand.to("cpu"),
+                                                   locs_with_depot[..., 1:, :].to("cpu").clone(), 
                                                    weather[:, None, :].
                                                    repeat(1, self.num_loc, 1).to("cpu"),
                                                    None).squeeze(-1).float().to(self.device)
@@ -210,7 +211,10 @@ class SVRPEnv(CVRPEnv):
 
     @staticmethod
     # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
-    def get_stoch_var(inp, w, alphas, A=0.6, B=0.2, G=0.2):
+    def get_stoch_var(inp, locs, w, alphas=None, A=0.6, B=0.2, G=0.2):
+        '''
+        locs: [batch, num_customers, 2]
+        '''
         # h = hpy().heap()
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
@@ -233,31 +237,62 @@ class SVRPEnv(CVRPEnv):
         var_w = T*B
         # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
-        alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas.div_(alphas.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
-        alphas *= sum_alpha     # alpha value [4.5*var_w]
-        alphas = torch.sqrt(alphas)        # alpha value [sqrt(4.5*var_w)]
+        
+        if alphas is None:  
+            alphas = torch.rand((9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        alphas_loc = locs.sum(-1)[..., None, None] * alphas[None, None, ...]  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1],  [9, 1]-> [1,1,9,1]. *-> [batch, num_loc, 9,1]
+            # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
+        alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
+        alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
         signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
         # signs = torch.where(signs > 0.5)
-        alphas[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
         w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
         # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
         w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
         
-        tot_w = (alphas*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+        tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w)
         out = inp_ + tot_w + noise
         
         # del tot_w, noise
-        del var_noise, sum_alpha, alphas, signs, w1, w2, tot_w
+        del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
         del T, noise, var_w
         del inp_
         gc.collect()
         
         return out
     
+    def reset_stochastic_demand(self, td, alpha):
+        '''
+        td is state of env, after calla reset()
+        alpha: [ 9, 1]
+        '''
+        
+        # reset real demand from weather
+        batch_size = td["demand"].size(0)
+        if self.generate_method == "uniform":
+            # print(f"generate data by uniform")
+            stochastic_demand = (
+                torch.FloatTensor(*batch_size, self.num_loc)
+                .uniform_(self.min_demand - 1, self.max_demand - 1)
+                .int()
+                + 1
+            ).float().to(self.device)
+        elif self.generate_method == "modelize":
+            # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
+            stochastic_demand = self.get_stoch_var(td["demand"].to("cpu"),
+                                                   td["locs"][:, 1:, :].to["cpu"].clone(), 
+                                                   td["weather"][:, None, :].
+                                                   repeat(1, self.num_loc, 1).to("cpu"),
+                                                   alpha.to("cpu")).squeeze(-1).float().to(self.device)
+
+        td.set("real_demand", stochastic_demand)
+        
+        return td
     def _step(self, td: TensorDict) -> TensorDict:
         current_node = td["action"][:, None]  # Add dimension for step
         n_loc = td["demand"].size(-1)  # Excludes depot
