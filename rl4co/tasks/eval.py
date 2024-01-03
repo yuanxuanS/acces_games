@@ -88,7 +88,11 @@ class EvalBase:
         """
         raise NotImplementedError("Implement in subclass")
 
-
+    def _get_rewards(self, td, out):
+        if self.env.name == "scp":      # in scp, reward in recorded in every step
+            return out["reward"]
+        else:
+            return self.env.get_reward(td, out["actions"])
 class GreedyEval(EvalBase):
     """Evaluates the policy using greedy decoding and single trajectory"""
 
@@ -105,7 +109,8 @@ class GreedyEval(EvalBase):
             num_starts=0,
             return_actions=True,
         )
-        rewards = self.env.get_reward(td, out["actions"])
+       
+        rewards = self._get_rewards(td, out)
         return out["actions"], rewards
 
 
@@ -136,7 +141,8 @@ class AugmentationEval(EvalBase):
         out = policy(td.clone(), decode_type="greedy", num_starts=0, return_actions=True)
 
         # Move into batches and compute rewards
-        rewards = self.env.get_reward(batchify(td_init, num_augment), out["actions"])
+        rewards = self._get_rewards(batchify(td_init, num_augment), out)
+        # rewards = self.env.get_reward(batchify(td_init, num_augment), out["actions"])
         rewards = unbatchify(rewards, num_augment)
         actions = unbatchify(out["actions"], num_augment)
 
@@ -178,7 +184,9 @@ class SamplingEval(EvalBase):
         )
 
         # Move into batches and compute rewards
-        rewards = self.env.get_reward(td, out["actions"])
+        
+        
+        rewards = self._get_rewards(td, out)
         rewards = unbatchify(rewards, self.samples)
         actions = unbatchify(out["actions"], self.samples)
 
@@ -215,7 +223,7 @@ class GreedyMultiStartEval(EvalBase):
 
         # Move into batches and compute rewards
         td = batchify(td_init, self.num_starts)
-        rewards = self.env.get_reward(td, out["actions"])
+        rewards = self._get_rewards(td, out)
         rewards = unbatchify(rewards, self.num_starts)
         actions = unbatchify(out["actions"], self.num_starts)
 
@@ -270,7 +278,7 @@ class GreedyMultiStartAugmentEval(EvalBase):
 
         # Move into batches and compute rewards
         td = batchify(td_init, (num_augment, self.num_starts))
-        rewards = self.env.get_reward(td, out["actions"])
+        rewards = self._get_rewards(td, out)
         rewards = unbatchify(rewards, self.num_starts * num_augment)
         actions = unbatchify(out["actions"], self.num_starts * num_augment)
 

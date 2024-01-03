@@ -14,6 +14,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
     embedding_registry = {
         "tsp": TSPInitEmbedding,
         "csp": TSPInitEmbedding,
+        "scp": SCPInitEmbedding,
         "atsp": TSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
         "svrp": SVRPInitEmbedding,
@@ -51,6 +52,23 @@ class TSPInitEmbedding(nn.Module):
         out = self.init_embed(td["locs"])
         return out
 
+
+class SCPInitEmbedding(nn.Module):
+    """Initial embedding for the Traveling Salesman Problems (TSP).
+    Embed the following node features to the embedding space:
+        - locs: x, y coordinates of the cities
+    """
+
+    def __init__(self, embedding_dim, linear_bias=True):
+        super(SCPInitEmbedding, self).__init__()
+        node_dim = 3  # x, y, costs
+        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
+
+    def forward(self, td):
+        out = self.init_embed(torch.cat((td["locs"], td["costs"].unsqueeze(-1)), -1))
+        return out
+    
+    
 
 class VRPInitEmbedding(nn.Module):
     """Initial embedding for the Vehicle Routing Problems (VRP).
