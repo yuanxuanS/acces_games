@@ -79,16 +79,11 @@ class CSPEnv(RL4COEnvBase):
         # covered_by_curr_node = torch.nonzero([curr_dist < self.min_cover])     # [batch, satisfy num]
         # uncertain_coverd_by_curr_node = torch.nonzero([curr_dist > self.min_cover] & [curr_dist < self.max_cover])
         # uncertrain_prob = func(curr_dist, uncertain_coverd_by_curr_node)        # []
+        
         covered_node = curr_dist < self.min_cover
-        
         td["covered_node"][covered_node] = 1       #[batch, num_loc]
-        # covered_node = td["covered_node"].scatter(
-        #     -1, covered_by_curr_node.unsqueeze(-1).expand_as(td["action_mask"]), 1
-        # )       # covered_by_curr_node值作为 -1维的另一个下标， 对应位置赋 1， 表示被cover
-        
-        
         curr_covered_guidence_vec = CSPEnv.get_covered_guidence_vec(covered_node, curr_dist.clone())
-        guidence_vec = td["guidence_vec"] * torch.where(covered_node, curr_covered_guidence_vec,
+        td["guidence_vec"] *= torch.where(covered_node, curr_covered_guidence_vec,
                                                         torch.ones_like(covered_node))
         
         # # Set not visited to 0 (i.e., we visited the node)
@@ -117,7 +112,7 @@ class CSPEnv(RL4COEnvBase):
                 "current_node": current_node,
                 "i": td["i"] + 1,
                 "action_mask": available,
-                "guidence_vec": guidence_vec,
+                "guidence_vec": td["guidence_vec"],
                 "covered_node": td["covered_node"],
                 "reward": reward,
                 "done": done,
