@@ -1,0 +1,8 @@
+_target_: rl4co.envs.CSPEnv
+name: csp
+
+num_loc: 20
+
+data_dir: ${paths.root_dir}/data/csp
+# val_file: csp_modelize${env.num_loc}_val_seed4321.npz
+# test_file: csp_modelize${env.num_loc}_test_seed1234.npz

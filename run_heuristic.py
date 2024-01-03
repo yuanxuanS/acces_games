@@ -1,16 +1,16 @@
 import hydra
 from rl4co.envs import SVRPEnv, SPCTSPEnv
 from rl4co.tasks.eval_heuristic import evaluate_baseline
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp
 import numpy as np
 
-env = SVRPEnv(num_loc=50) 
+env = SVRPEnv(num_loc=20) 
 # 使用test的数据集做evaluation
-dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize50_test_seed1234.npz"
+dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize20_test_seed1234.npz"
 # dataset_td = env.dataset(phase="test", filename=dataset_f)     
         
-baseline = "tabu"
-save_fname = "tabu_results_svrp50.npz"
+baseline = "random"
+save_fname = "random_results_svrp20.npz"
 evaluate_baseline(env, dataset_f, baseline, save_results=True, save_fname=save_fname)
 
 # # test

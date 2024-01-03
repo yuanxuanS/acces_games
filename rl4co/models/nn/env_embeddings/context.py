@@ -17,6 +17,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPContext,
         "atsp": TSPContext,
         "csp": TSPContext,
+        "scp": SCPContext,
         "cvrp": VRPContext,
         "svrp": SVRPContext,
         "sdvrp": VRPContext,
@@ -101,7 +102,22 @@ class TSPContext(EnvContext):
             ).view(batch_size, *node_dim)
         return self.project_context(context_embedding)
 
+class SCPContext(EnvContext):
+    """Context embedding for the Traveling Salesman Problem (TSP).
+    Project the following to the embedding space:
+        - first node embedding
+        - current node embedding
+        - current reward: cost of selected node in set
+    """
 
+    def __init__(self, embedding_dim):
+        super(SCPContext, self).__init__(embedding_dim, embedding_dim + 1)
+
+    def _state_embedding(self, embeddings, td):
+        state_embedding = td["reward"]
+        return state_embedding
+    
+    
 class VRPContext(EnvContext):
     """Context embedding for the Capacitated Vehicle Routing Problem (CVRP).
     Project the following to the embedding space:

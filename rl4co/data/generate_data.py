@@ -140,7 +140,7 @@ def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacit
         # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
         stochastic_demand = get_stoch_var(demand[..., np.newaxis],
-                                          locs.clone(),
+                                          locs.copy(),
                                                 np.repeat(weather[:, np.newaxis, :], vrp_size, axis=1),
                                                 None).squeeze(-1).astype(np.float32)
             
@@ -181,8 +181,8 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
     sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
     # alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
-    alphas = np.random.random((9, shape))      # =np.random.random, uniform dis(0, 1)
-    alphas_loc = locs.sum(-1)[..., np.newaxis, np.newaxis] * alphas[np.newaxis, np.newaxis, ...]
+    alphas = np.random.random((n_problems, 1, 9, shape))      # =np.random.random, uniform dis(0, 1)
+    alphas_loc = locs.sum(-1)[..., np.newaxis, np.newaxis] * alphas
     
     
     alphas_loc /= alphas_loc.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1

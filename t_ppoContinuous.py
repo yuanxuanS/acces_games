@@ -3,7 +3,7 @@ import wandb
 from lightning.pytorch.loggers import WandbLogger
 
 from rl4co.envs import SVRPEnv
-from rl4co.models.zoo.ppo import PPOContinuousModel
+from rl4co.model_adversary import PPOContiAdvModel
 from rl4co.utils.trainer import RL4COTrainer
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from rl4co.heuristic import CW_svrp, TabuSearch_svrp
@@ -21,7 +21,7 @@ env = SVRPEnv(num_loc=20)
 # baseline
 baseline = CW_svrp
 
-model = PPOContinuousModel(env, 
+model = PPOContiAdvModel(env, 
                         opponent=baseline,
                        batch_size=128,   #512,
                        val_batch_size=128,   #1024,
@@ -34,17 +34,20 @@ model = PPOContinuousModel(env,
 # # Greedy rollouts over untrained model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 td_init = env.reset(batch_size=[10]).to(device)      # return batch_size datas by generate_data
-print(td_init)
+print(td_init["weather"])
 # print(env.dataset().data)       # td: data variables in env
 # print(len(env.dataset()))   # init with 0 data
 model = model.to(device)
 
-baseline_return = baseline(td_init.clone()).forward()
-td_init["reward"] = baseline_return["rewards"]
+
 ### test greedy rollout with untrained model
 out = model(td_init.clone(), phase="test", return_actions=True)
+td_init = env.reset_stochastic_demand(td_init.clone(), out["action_adv"][..., None])
+
+baseline_return = baseline(td_init.clone()).forward()
+td_init["reward"] = baseline_return["rewards"]
 # Plotting
-print(f"Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
+print(f"Tour lengths: {[f'{-r.item():.2f}' for r in td_init['reward']]}")
 # for td, actions in zip(td_init, out['actions'].cpu()):
 #     env.render(td, actions)
 
@@ -60,33 +63,38 @@ print(f"Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
 
 
 # Print model summary
-# rich_model_summary = RichModelSummary(max_depth=3)
+rich_model_summary = RichModelSummary(max_depth=3)
 
 # Callbacks list
 # callbacks = [checkpoint_callback, rich_model_summary]
 
-### logging 
-# wandb.login()
+## logging 
+wandb.login()
 
-# logger = WandbLogger(project="rl4co-robust", name="svrp-am-weath-demand_f")
-## Keep below if you don't want logging
+logger = WandbLogger(project="rl4co-robust", name="svrp-adv")
+# Keep below if you don't want logging
 # logger = None
 
 trainer = RL4COTrainer(
     max_epochs=3,
     accelerator="auto",
     devices=1,
-    logger=None,
+    logger=logger,
     callbacks=None,
 )
 
 trainer.fit(model)
-'''
+
 ### testing
 model = model.to(device)
-out = model(td_init.clone(), phase="test", decode_type="greedy", return_actions=True)
-print(f"Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
+out = model(td_init.clone(), phase="test", return_actions=True)
+td_init = env.reset_stochastic_demand(td_init.clone(), out["action_adv"][..., None])
 
+baseline_return = baseline(td_init.clone()).forward()
+td_init["reward"] = baseline_return["rewards"]
+# Plotting
+print(f"Tour lengths: {[f'{-r.item():.2f}' for r in td_init['reward']]}")
+'''
 ## baseline 
 baseline_cw = CW_svrp(td_init.clone())
 out = baseline_cw.forward()
