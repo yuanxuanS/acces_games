@@ -239,8 +239,8 @@ class SVRPEnv(CVRPEnv):
         sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         
         if alphas is None:  
-            alphas = torch.rand((9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas_loc = locs.sum(-1)[..., None, None] * alphas[None, None, ...]  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1],  [9, 1]-> [1,1,9,1]. *-> [batch, num_loc, 9,1]
+            alphas = torch.rand((n_problems, 1, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        alphas_loc = locs.sum(-1)[..., None, None] * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
             # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
         alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
         alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
@@ -268,7 +268,7 @@ class SVRPEnv(CVRPEnv):
     def reset_stochastic_demand(self, td, alpha):
         '''
         td is state of env, after calla reset()
-        alpha: [ 9, 1]
+        alpha: [batch, 9, 1]
         '''
         
         # reset real demand from weather
@@ -284,11 +284,13 @@ class SVRPEnv(CVRPEnv):
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
+            locs_cust = td["locs"].clone()
+            locs_cust = locs_cust[:, 1:, :]
             stochastic_demand = self.get_stoch_var(td["demand"].to("cpu"),
-                                                   td["locs"][:, 1:, :].to["cpu"].clone(), 
+                                                   locs_cust.to("cpu"), 
                                                    td["weather"][:, None, :].
                                                    repeat(1, self.num_loc, 1).to("cpu"),
-                                                   alpha.to("cpu")).squeeze(-1).float().to(self.device)
+                                                   alpha[:, None, ...].to("cpu")).squeeze(-1).float().to(self.device)
 
         td.set("real_demand", stochastic_demand)
         

@@ -9,3 +9,4 @@ from rl4co.envs.routing.sdvrp import SDVRPEnv
 from rl4co.envs.routing.spctsp import SPCTSPEnv
 from rl4co.envs.routing.tsp import TSPEnv
 from rl4co.envs.routing.csp import CSPEnv
+from rl4co.envs.routing.scp import SCPEnv
