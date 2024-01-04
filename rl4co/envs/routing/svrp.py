@@ -261,7 +261,7 @@ class SVRPEnv(CVRPEnv):
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
         del T, noise, var_w
         del inp_
-        gc.collect()
+        # gc.collect()
         
         return out
     

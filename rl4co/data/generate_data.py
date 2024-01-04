@@ -210,7 +210,7 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     
     del sum_alpha, alphas_loc, signs, tot_w
     del T, noise, var_w
-    gc.collect()
+    # gc.collect()
         
     return out
 
