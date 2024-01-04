@@ -53,6 +53,12 @@ class REINFORCE(RL4COLitModule):
         self, batch: Any, batch_idx: int, phase: str, dataloader_idx: int = None
     ):
         td = self.env.reset(batch)
+        out = self.update_step(td, batch, phase, dataloader_idx)
+        
+        metrics = self.log_metrics(out, phase, dataloader_idx=dataloader_idx)
+        return {"loss": out.get("loss", None), **metrics}
+
+    def update_step(self, td, batch, phase, dataloader_idx: int = None):
         # Perform forward pass (i.e., constructing solution and computing log-likelihoods)
         out = self.policy(td, self.env, phase=phase)
 
@@ -60,9 +66,9 @@ class REINFORCE(RL4COLitModule):
         if phase == "train":
             out = self.calculate_loss(td, batch, out)
 
-        metrics = self.log_metrics(out, phase, dataloader_idx=dataloader_idx)
-        return {"loss": out.get("loss", None), **metrics}
-
+        
+        return out
+    
     def calculate_loss(
         self,
         td: TensorDict,
