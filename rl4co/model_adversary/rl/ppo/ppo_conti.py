@@ -131,9 +131,7 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
             
         log.info(f"end of an epoch") 
 
-    def shared_step(
-        self, batch: Any, batch_idx: int, phase: str, dataloader_idx: int = None
-    ):
+    def inference_step(self, batch: Any, batch_idx: int, phase: str):
         # Evaluate old actions, log probabilities, and rewards
         with torch.no_grad():
             td = self.env.reset(batch)  # note: clone needed for dataloader
@@ -144,8 +142,9 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                 oppo_reward = self.opponent(td).forward()
                 td["reward"] = oppo_reward["rewards"]
                 out["reward"] = td["reward"]
-            
-
+        return td, out
+    
+    def update_step(self, td, out, phase, dataloader_idx: int = None, optimizer=None):
         if phase == "train":
             batch_size = out["action_adv"].shape[0]
 
@@ -215,8 +214,10 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
 
                     # perform manual optimization following the Lightning routine
                     # https://lightning.ai/docs/pytorch/stable/common/optimization.html
-
-                    opt = self.optimizers()
+                    if optimizer is None:
+                        opt = self.optimizers()
+                    else:   # when train rarl
+                        opt = optimizer
                     opt.zero_grad()
                     self.manual_backward(loss)
                     if self.ppo_cfg["max_grad_norm"] is not None:
@@ -235,7 +236,16 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                     "entropy": entropy.mean(),
                 }
             )
-
+        
+        return out
+    
+    def shared_step(
+        self, batch: Any, batch_idx: int, phase: str, dataloader_idx: int = None
+    ):
+        td, out = self.inference_step(batch, batch_idx, phase)
+            
+        out = self.update_step(td, out, phase, dataloader_idx)
         metrics = self.log_metrics(out, phase, dataloader_idx=dataloader_idx)
+
         return {"loss": out.get("loss", None), **metrics}
       
