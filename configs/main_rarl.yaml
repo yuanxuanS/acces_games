@@ -10,15 +10,17 @@ defaults:
   - paths: default.yaml
   - extras: default.yaml
   - hydra: default.yaml
-  - model: default.yaml
+  - model_rarl: am_am-ppo.yaml   # 
+  - model_adversary: am-ppo.yaml
+  - model: am.yaml
   - env: default.yaml
 
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
   # - experiment: base_1.yaml # set baseline experiment
-  - experiment: routing/am-ppo.yaml # set baseline experiment
+  # - experiment: routing/am.yaml # set baseline experiment
   # - new_experiment: base_svrp.yaml
-  # - new_experiment: adversary/am-ppo.yaml #routing/am.yaml
+  - new_experiment: RARL/am_am-ppo.yaml #routing/am.yaml
   # config for hyperparameter optimization
   - hparams_search: null
 
@@ -33,7 +35,7 @@ defaults:
   - evaluate:  default.yaml    #greedy_eval.yaml # 
 
 # task name, determines output directory path
-mode: "train"
+mode: "train_rarl"
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs
@@ -61,7 +63,7 @@ matmul_precision: "medium"
 
 # metrics to be logged
 metrics:
-  train: ["loss", "reward"]
+  train: ["loss", "reward", "adv_loss"]
   val: ["reward"]
   test: ["reward"]
   log_on_step: True

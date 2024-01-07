@@ -9,8 +9,8 @@ env = SVRPEnv(num_loc=20)
 dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize20_test_seed1234.npz"
 # dataset_td = env.dataset(phase="test", filename=dataset_f)     
         
-baseline = "random"
-save_fname = "random_results_svrp20.npz"
+baseline = "fixed"
+save_fname = "fixed_results_svrp20.npz"
 evaluate_baseline(env, dataset_f, baseline, save_results=True, save_fname=save_fname)
 
 # # test

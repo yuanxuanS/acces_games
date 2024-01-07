@@ -62,9 +62,9 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
     def __init__(
         self,
         env: RL4COEnvBase,
-        opponent: object or None,
-        policy: nn.Module,
-        critic: nn.Module,
+        opponent: Union[object, str]=None,
+        policy: nn.Module = None,
+        critic: nn.Module = None,
         clip_range: float = 0.2,  # epsilon of PPO
         ppo_epochs: int = 2,  # inner epoch, K
         mini_batch_size: Union[int, float] = 0.25,  # 0.25,

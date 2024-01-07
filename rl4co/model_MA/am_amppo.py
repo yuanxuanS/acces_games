@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 
 from lightning import LightningModule
-from rl4co.model_marl.base import RL4COMarlLitModule
+from rl4co.model_MA.base import RL4COMarlLitModule
 from torch.utils.data import DataLoader
 
 from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp
+from rl4co.models.zoo.am import AttentionModel
+from rl4co.model_adversary import PPOContiAdvModel
 
 
 from rl4co.data.dataset import tensordict_collate_fn
@@ -16,6 +18,9 @@ from rl4co.data.generate_data import generate_default_datasets
 from rl4co.envs.common.base import RL4COEnvBase
 from rl4co.utils.optim_helpers import create_optimizer, create_scheduler
 from rl4co.utils.pylogger import get_pylogger
+
+from lightning.pytorch.utilities import grad_norm
+
 from memory_profiler import profile
 import time
 log = get_pylogger(__name__)
@@ -24,7 +29,14 @@ OPPONENTS_REGISTRY = {
     "cw": CW_svrp,
     "tabu": TabuSearch_svrp,
     "random": Random_svrp
+}
 
+ADVERSARY_REGISTRY = {
+    "am-ppo": PPOContiAdvModel,
+}
+
+PROTAGONIST_REGISTRY = {
+    "am": AttentionModel,
 }
 
 class AM_PPO(RL4COMarlLitModule):
@@ -60,8 +72,8 @@ class AM_PPO(RL4COMarlLitModule):
     def __init__(
         self,
         env: RL4COEnvBase,
-        protagonist: LightningModule or None,
-        adversary: LightningModule or None,
+        protagonist: Union[str, LightningModule] = None,
+        adversary: Union[str, LightningModule] = None,
         batch_size: int = 512,
         val_batch_size: int = None,
         test_batch_size: int = None,
@@ -69,23 +81,14 @@ class AM_PPO(RL4COMarlLitModule):
         val_data_size: int = 10_000,
         test_data_size: int = 10_000,
         optimizer: Union[str, torch.optim.Optimizer, partial] = "Adam",
-        adv_optimizer: Union[str, torch.optim.Optimizer, partial] = "Adam",
         optimizer_kwargs: dict = {"lr": 1e-4},
-        adv_optimizer_kwargs: dict = {"lr": 1e-4},
         lr_scheduler: Union[str, torch.optim.lr_scheduler.LRScheduler, partial] = None,
-        adv_lr_scheduler: Union[str, torch.optim.lr_scheduler.LRScheduler, partial] = None,
         lr_scheduler_kwargs: dict = {
             "milestones": [80, 95],
             "gamma": 0.1,
         },
-        adv_lr_scheduler_kwargs: dict = {
-            "milestones": [80, 95],
-            "gamma": 0.1,
-        },
         lr_scheduler_interval: str = "epoch",
-        adv_lr_scheduler_interval: str = "epoch",
         lr_scheduler_monitor: str = "val/reward",
-        adv_lr_scheduler_monitor: str = "val/reward",
         generate_data: bool = True,
         shuffle_train_dataloader: bool = True,
         dataloader_num_workers: int = 0,
@@ -103,7 +106,13 @@ class AM_PPO(RL4COMarlLitModule):
         self.save_hyperparameters(logger=False)
 
         self.env = env
+        if isinstance(protagonist, str):
+            protagonist = get_protagonist(protagonist)
         self.protagonist = protagonist
+        self.protagonist.automatic_optimization = False
+        
+        if isinstance(adversary, str):
+            adversary = get_adversary(adversary)
         self.adversary = adversary
         
         # 加
@@ -124,14 +133,12 @@ class AM_PPO(RL4COMarlLitModule):
             "test_data_size": test_data_size,
         }
 
-        self._optimizer_name_or_cls: Union[str, torch.optim.Optimizer] = optimizer
-        self.optimizer_kwargs: dict = optimizer_kwargs
-        self._lr_scheduler_name_or_cls: Union[
-            str, torch.optim.lr_scheduler.LRScheduler
-        ] = lr_scheduler
-        self.lr_scheduler_kwargs: dict = lr_scheduler_kwargs
-        self.lr_scheduler_interval: str = lr_scheduler_interval
-        self.lr_scheduler_monitor: str = lr_scheduler_monitor
+        self._optimizer_name_or_cls = None
+        self.optimizer_kwargs = None
+        self._lr_scheduler_name_or_cls = None
+        self.lr_scheduler_kwargs = None
+        self.lr_scheduler_interval = None
+        self.lr_scheduler_monitor = None
 
         self.shuffle_train_dataloader = shuffle_train_dataloader
         self.dataloader_num_workers = dataloader_num_workers
@@ -205,13 +212,28 @@ class AM_PPO(RL4COMarlLitModule):
         """
 
         # prog_optim_lst, prog_sche_dict = self.protagonist.configure_optimizers()
+        prog_optim_dict = {}
         prog_optim = self.protagonist.configure_optimizers()
+        if isinstance(prog_optim, tuple):
+            prog_optim_cls, prog_lrsche_dict = prog_optim
+            
+            prog_optim_dict["optimizer"] = prog_optim_cls[0]
+            prog_optim_dict["lr_scheduler"] = prog_lrsche_dict
+        else:
+            prog_optim_dict["optimizer"] = prog_optim_cls
+            
         # adv_optim_lst, adv_sche_dict = self.adversary.configure_optimizers()
+        adv_optim_dict = {}
         adv_optim = self.adversary.configure_optimizers()
+        if isinstance(adv_optim, tuple):
+            adv_optim_cls, adv_lrsche_dict = adv_optim
+            adv_optim_dict["optimizer"] = adv_optim_cls[0]
+            adv_optim_dict["lr_scheduler"] = adv_lrsche_dict
+        else:
+            adv_optim_dict["optimizer"] = adv_optim_cls
         
-        optim_lst = [prog_optim, adv_optim]
         # sche_dict = {"prog": prog_optim, "adv":adv_optim}
-        return optim_lst, []
+        return (prog_optim_dict, adv_optim_dict)
 
     def log_metrics(self, metric_dict: dict, phase: str, dataloader_idx: int = None):
         """Log metrics to logger and progress bar"""
@@ -227,7 +249,9 @@ class AM_PPO(RL4COMarlLitModule):
             if k in metrics
         }
         log_on_step = self.log_on_step if phase == "train" else False
-        on_epoch = False if phase == "train" else True
+        # log_on_step = True
+        # on_epoch = False if phase == "train" else True
+        on_epoch = True
         self.log_dict(
             metrics,
             on_step=log_on_step,
@@ -259,20 +283,34 @@ class AM_PPO(RL4COMarlLitModule):
         
         optim_prog, optim_adv = self.optimizers()
         # prog forward: get solution and update
-        out_prog = self.protagonist.update_step(td, batch, phase)
+        out_prog = self.protagonist.calculoss_step(td, batch, phase)
+        # if False:
+        if phase == "train":
+            prog_loss = out_prog["loss"]
+            self.protagonist.man_update_step(prog_loss, optim_prog)
         
         out_all = {key: value for key, value in out_prog.items()}
         # ? change out_adv : reward? or td?
-        # adv update
-        out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
+        # if False:
+        if phase == "train":
+            # adv update
+           out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
         
+                
         for key, value in out_adv.items():
             if "adv" not in key:
                 key = "adv_" + key
             out_all[key] = value
 
         metrics = self.log_metrics(out_all, phase)
-
+        # debug
+        # if phase == "train":
+        #     norms_prog_policy = grad_norm(self.protagonist.policy, norm_type=2)
+        #     norms_adv_policy = grad_norm(self.adversary.policy, norm_type=2)
+        #     norms_adv_critic = grad_norm(self.adversary.critic, norm_type=2)
+            # print(f' prog grad norm: {norms_prog_policy["grad_2.0_norm_total"]} \
+            #     adv, policy norm {norms_adv_policy["grad_2.0_norm_total"]}, \
+            #     critic norm {norms_adv_critic["grad_2.0_norm_total"]}')
         return metrics
         # raise NotImplementedError("Shared step is required to implemented in subclass")
 
@@ -310,6 +348,12 @@ class AM_PPO(RL4COMarlLitModule):
         self.train_dataset = self.wrap_dataset(train_dataset)
         log.info("end of an epoch")
         print(f"end of an epoch, time {time.time()}")
+        
+        sche_prog, sche_adv = self.lr_schedulers()
+        if isinstance(sche_prog, torch.optim.lr_scheduler.MultiStepLR):
+            sche_prog.step()
+        if isinstance(sche_adv, torch.optim.lr_scheduler.MultiStepLR):
+            sche_adv.step()
 
     def wrap_dataset(self, dataset):
         """Wrap dataset with policy-specific wrapper. This is useful i.e. in REINFORCE where we need to
@@ -356,3 +400,25 @@ def get_adversary_opponent(name, **kw):
             f"Unknown baseline {opponent_cls}. Available baselines: {OPPONENTS_REGISTRY.keys()}"
         )
     return opponent_cls
+
+def get_adversary(name, **kw):
+    """Get a adversary by name
+    """
+
+    adversary_cls = ADVERSARY_REGISTRY.get(name, None)
+    if adversary_cls is None:
+        raise ValueError(
+            f"Unknown baseline {adversary_cls}. Available baselines: {ADVERSARY_REGISTRY.keys()}"
+        )
+    return adversary_cls
+
+def get_protagonist(name, **kw):
+    """Get a protagonist by name
+    """
+
+    protagonist_cls = PROTAGONIST_REGISTRY.get(name, None)
+    if protagonist_cls is None:
+        raise ValueError(
+            f"Unknown baseline {protagonist_cls}. Available baselines: {PROTAGONIST_REGISTRY.keys()}"
+        )
+    return protagonist_cls
