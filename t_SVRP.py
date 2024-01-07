@@ -41,6 +41,9 @@ out = model(td_init.clone(), phase="test", decode_type="greedy", return_actions=
 print(f"Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
 # for td, actions in zip(td_init, out['actions'].cpu()):
 #     env.render(td, actions)
+out = model(td_init.clone(), phase="test", decode_type="greedy", return_actions=True)
+# Plotting
+print(f"After: Tour lengths: {[f'{-r.item():.2f}' for r in out['reward']]}")
 
 
 ## callbacks

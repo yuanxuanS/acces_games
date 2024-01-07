@@ -16,17 +16,17 @@ logger:
     tags: ["am-ppo", "${env.name}"]
     group: ${env.name}${env.num_loc}
     name: ppo-${env.name}${env.num_loc}
-
+    offline: true
 model:
-  batch_size: 512
+  batch_size: 32  #512
   val_batch_size: 1024
   test_batch_size: 1024
-  train_data_size: 1_280_000
+  train_data_size: 32 #1_280_000
   val_data_size: 10_000
   test_data_size: 10_000
   clip_range: 0.2
-  ppo_epochs: 2
-  mini_batch_size: 512
+  ppo_epochs: 1 #2
+  mini_batch_size: 32 # 512
   vf_lambda: 0.5
   entropy_lambda: 0.01
   normalize_adv: False

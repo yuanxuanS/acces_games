@@ -3,7 +3,7 @@ import wandb
 from lightning.pytorch.loggers import WandbLogger, CSVLogger
 
 from rl4co.envs import SVRPEnv
-from rl4co.model_marl import AM_PPO
+from rl4co.model_rarl import AM_PPO
 from rl4co.models.zoo.am import AttentionModel
 
 from rl4co.model_adversary import PPOContiAdvModel
@@ -42,16 +42,19 @@ adv = PPOContiAdvModel(env,
                        test_data_size=128   #10_000
                        ) 
 
-
+metrics = {"train":["reward", "loss", "adv_loss"],
+            "val":["reward"],
+                "test":["reward"],}
 model = AM_PPO(env=env, 
                 protagonist=prog,
                 adversary=adv,
-                batch_size=128,   #512,
+                batch_size=32,   #512,
                 val_batch_size=128,   #1024,
                 test_batch_size=128,  #1024,
-                train_data_size=256,  #1_280_000,
-                val_data_size=128,    #10_000,
-                test_data_size=128   #10_000
+                train_data_size=3200,  #1_280_000,
+                val_data_size=1280,    #10_000,
+                test_data_size=128,   #10_000
+                metrics=metrics
                 )
 
 # # Greedy rollouts over untrained model
@@ -100,10 +103,10 @@ wandb.login()
 '''
 logger = CSVLogger(save_dir="/home/panpan/rl4co/")
 trainer = RL4COTrainer(
-    max_epochs=3,
+    max_epochs=10,
     accelerator="auto",
     devices=1,
-    logger=None,
+    logger=logger,
     callbacks=None,
 )
 

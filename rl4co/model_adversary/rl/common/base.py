@@ -7,7 +7,7 @@ import torch.nn as nn
 from lightning import LightningModule
 from torch.utils.data import DataLoader
 
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, Fixed_svrp
 
 
 from rl4co.data.dataset import tensordict_collate_fn
@@ -22,7 +22,8 @@ log = get_pylogger(__name__)
 OPPONENTS_REGISTRY = {
     "cw": CW_svrp,
     "tabu": TabuSearch_svrp,
-    "random": Random_svrp
+    "random": Random_svrp,
+    "fixed": Fixed_svrp,
 
 }
 

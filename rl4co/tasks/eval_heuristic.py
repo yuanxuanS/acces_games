@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, Fixed_svrp
 
 def check_unused_kwargs(class_, kwargs):
     if len(kwargs) > 0 and not (len(kwargs) == 1 and "progress" in kwargs):
@@ -28,7 +28,8 @@ def evaluate_baseline(
             "func": TabuSearch_svrp, "kwargs": {}},
         "random": {
             "func": Random_svrp, "kwargs": {}
-        }
+        },
+        "fixed": {"func": Fixed_svrp, "kwargs":{}}
     }
 
     assert baseline in baselines_mapping, "baseline {} not found".format(baseline)
