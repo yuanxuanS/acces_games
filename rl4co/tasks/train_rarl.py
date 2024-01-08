@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from rl4co.tasks.eval import evaluate_policy
+from rl4co.tasks.eval_rarl import evaluate_rarl_policy
 
 import hydra
 import lightning as L
@@ -111,18 +111,36 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         log.info(f"Start evaluation by {method}!")
         
         if cfg.get("mode") == "evaluate":
-            ckpt_path = cfg.get("ckpt_path")
-            evaluate_model = model.load_from_checkpoint(ckpt_path)
-            save_fname = cfg.get("evaluate_loc") + "/evalu_"+method+".npz"
+            ckpt_rarl_path = cfg.get("ckpt_rarl_path")
+            rarl_model = model.load_from_checkpoint(ckpt_rarl_path)
+
+            ckpt_prog_path = cfg.get("ckpt_prog_path")
+
+            prog_ = "rarltrainedprog"
+            if cfg.get("trained_rarl_prog"):
+                
+                evaluate_model = rarl_model.protagonist
+            else:
+                evaluate_model = model.protagonist.load_from_checkpoint(ckpt_prog_path)
+                prog_ = "nonrarltrainedprog"
+                
+            if cfg.get("eval_withadv"):
+                adv = rarl_model.adversary
+                save_fname = cfg.get("evaluate_loc") + "/evalu_5adv_"+prog_+"_"+method+".npz"
+            else:
+                adv = None
+                save_fname = cfg.get("evaluate_loc") + "/evalu_5noadv_"+prog_+"_"+method+".npz"
+            
+            
         elif cfg.get("mode") == "train":
             ckpt_path = trainer.checkpoint_callback.best_model_path
             evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)
             save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
-        log.info(f"Best ckpt path: {ckpt_path}")
+        log.info(f"Best ckpt path: {ckpt_rarl_path}")
         
-        dataset = env.dataset(phase="test")     # 使用test的数据集做evaluation
+        dataset = env.dataset(phase="test", batch_size=cfg.model_rarl.test_batch_size)     # 使用test的数据集做evaluation
         
-        evaluate_policy(env, evaluate_model.policy, dataset, method, save_results=True, save_fname=save_fname)
+        evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=save_fname)
 
     return metric_dict, object_dict
 

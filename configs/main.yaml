@@ -16,9 +16,9 @@ defaults:
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
   # - experiment: base_1.yaml # set baseline experiment
-  - experiment: routing/am-ppo.yaml # set baseline experiment
+  # - experiment: routing/am.yaml # set baseline experiment
   # - new_experiment: base_svrp.yaml
-  # - new_experiment: adversary/am-ppo.yaml #routing/am.yaml
+  - new_experiment: routing/am.yaml #routing/am.yaml
   # config for hyperparameter optimization
   - hparams_search: null
 
@@ -30,7 +30,7 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:  default.yaml    #greedy_eval.yaml # 
+  - evaluate:  greedy_eval.yaml # default.yaml    #
 
 # task name, determines output directory path
 mode: "train"

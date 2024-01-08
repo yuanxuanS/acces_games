@@ -9,6 +9,12 @@ from torch.utils.data import DataLoader
 
 from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp
 
+from lightning.pytorch.core.saving import _load_from_checkpoint
+from tensordict import TensorDict
+from typing_extensions import Self
+from typing import IO, Any, Optional, Union, cast
+from lightning.fabric.utilities.types import _MAP_LOCATION_TYPE, _PATH
+
 
 from rl4co.data.dataset import tensordict_collate_fn
 from rl4co.data.generate_data import generate_default_datasets
@@ -343,6 +349,51 @@ class RL4COMarlLitModule(LightningModule):
             num_workers=self.dataloader_num_workers,
             collate_fn=tensordict_collate_fn,
         )
+        
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: Union[_PATH, IO],
+        map_location: _MAP_LOCATION_TYPE = None,
+        hparams_file: Optional[_PATH] = None,
+        strict: bool = False,
+        load_baseline: bool = False,
+        **kwargs: Any,
+    ) -> Self:
+        """Load model from checkpoint/
+
+        Note:
+            This is a modified version of `load_from_checkpoint` from `pytorch_lightning.core.saving`.
+            It deals with matching keys for the baseline by first running setup
+        """
+
+        if strict:
+            log.warning("Setting strict=False for loading model from checkpoint.")
+            strict = False
+
+        # Do not use strict
+        loaded = _load_from_checkpoint(
+            cls,
+            checkpoint_path,
+            map_location,
+            hparams_file,
+            strict,
+            **kwargs,
+        )
+
+        # Load baseline state dict
+        if load_baseline:
+            # setup baseline first
+            loaded.setup()
+            loaded.post_setup_hook()
+            # load baseline state dict
+            state_dict = torch.load(checkpoint_path)["state_dict"]
+            # get only baseline parameters
+            state_dict = {k: v for k, v in state_dict.items() if "baseline" in k}
+            state_dict = {k.replace("baseline.", "", 1): v for k, v in state_dict.items()}
+            loaded.baseline.load_state_dict(state_dict)
+
+        return cast(Self, loaded)
 
 def get_adversary_opponent(name, **kw):
     """Get a REINFORCE baseline by name
