@@ -285,7 +285,7 @@ class AM_PPO(RL4COMarlLitModule):
         
         loop_times = 1
         if phase == "train":
-            loop_times = 2
+            loop_times = 1
             
         
         for _ in range(loop_times):
@@ -303,7 +303,8 @@ class AM_PPO(RL4COMarlLitModule):
         # if False:
         if phase == "train":
             # adv update
-           out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
+            if self.current_epoch % 10 == 0:
+                out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
         
                 
         for key, value in out_adv.items():
