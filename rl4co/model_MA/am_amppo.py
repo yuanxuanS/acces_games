@@ -282,13 +282,22 @@ class AM_PPO(RL4COMarlLitModule):
         td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)
         
         optim_prog, optim_adv = self.optimizers()
-        # prog forward: get solution and update
-        out_prog = self.protagonist.calculoss_step(td, batch, phase)
-        # if False:
-        if phase == "train":
-            prog_loss = out_prog["loss"]
-            self.protagonist.man_update_step(prog_loss, optim_prog)
         
+        loop_times = 1
+        if phase == "train":
+            loop_times = 2
+            
+        
+        for _ in range(loop_times):
+            # prog forward: get solution and update
+            td_temp = td.clone()
+            out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
+            # if False:
+            if phase == "train":
+                prog_loss = out_prog["loss"]
+                self.protagonist.man_update_step(prog_loss, optim_prog)
+        
+        td = td_temp.clone()
         out_all = {key: value for key, value in out_prog.items()}
         # ? change out_adv : reward? or td?
         # if False:

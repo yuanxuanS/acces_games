@@ -22,7 +22,7 @@ def plot_curve(x_values, y_values, title="Curve Plot", save_path="./"):
 
 # 主函数
 def main():
-    file_path = "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-06_20-28-27/csv/version_0"
+    file_path = "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-07_13-29-20/csv/version_0"
     # 替换为你的CSV文件路径
     csv_file_path = file_path + '/metrics.csv'
     
