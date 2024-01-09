@@ -303,7 +303,7 @@ class AM_PPO(RL4COMarlLitModule):
         # if False:
         if phase == "train":
             # adv update
-            if self.current_epoch % 10 == 0:
+            if self.current_epoch % 5 == 0:
                 out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
         
                 
