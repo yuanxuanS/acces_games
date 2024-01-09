@@ -30,7 +30,7 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:  greedy_eval.yaml # default.yaml    #
+  - evaluate:   default.yaml    #greedy_eval.yaml #
 
 # task name, determines output directory path
 mode: "train"
