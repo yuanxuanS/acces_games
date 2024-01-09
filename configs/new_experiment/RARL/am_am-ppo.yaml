@@ -65,7 +65,7 @@ model_adversary:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 100 #
+  max_epochs: 150 #
 
 seed: 1234
 
