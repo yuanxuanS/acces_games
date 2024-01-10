@@ -18,8 +18,8 @@ evaluate: true
 # in evaluate mode, must give these params!!!!!
 # evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33"
 # ckpt_path: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33/rl4co/mql00v5r/checkpoints/epoch=2-step=3.ckpt"
-evaluate_savedir: "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-07_13-29-20"
-ckpt_path: "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-07_13-29-20/csv/version_0/checkpoints/epoch=199-step=4500000.ckpt"
+evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-01-09_08-39-55"
+ckpt_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-01-09_08-39-55/rl4co/hmn0gzmw/checkpoints/epoch=99-step=250000.ckpt"
 evaluate_loc: "${evaluate_savedir}"
-evaluate_method: "greedy"   # ["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]
+evaluate_method: "greedy_multistart_augment"   # ["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]
 
