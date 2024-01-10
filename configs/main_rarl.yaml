@@ -32,7 +32,7 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:  default.yaml    #greedy_eval_rarl.yaml # 
+  - evaluate:   default.yaml    #default.yaml    #greedy_eval_rarl.yaml #
 
 # task name, determines output directory path
 mode: "train_rarl"
