@@ -38,14 +38,25 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     if cfg.get("seed"):
         L.seed_everything(cfg.seed, workers=True)
 
+    
+        
     # We instantiate the environment separately and then pass it to the model
     log.info(f"Instantiating environment <{cfg.env._target_}>")
     env = hydra.utils.instantiate(cfg.env)
 
+    
+    if cfg.fix_graph:
+        graph_pool = hydra.utils.instantiate(cfg.graph_pool)
+        graph_pool.generate_datas()
+        env.get_fix_data(graph_pool)
     # Note that the RL environment is instantiated inside the model
     log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
     protagonist: LightningModule = hydra.utils.instantiate(cfg.model, env)
     
+    if cfg.load_prog_from_path:
+        protagonist = protagonist.load_from_checkpoint(cfg.load_prog_from_path)
+        print("protagonist is loaded!")
+        
     # Note that the RL environment is instantiated inside the model
     log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
     adversary: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
@@ -87,6 +98,11 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
 
     if cfg.get("train"):
         log.info("Starting training!")
+        if cfg.train_with_pretrain:
+            model = model.load_from_checkpoint(cfg.train_with_pretrain)
+            print("load rarl pretrained")
+        else:
+            print("no load rarl pretrained")
         trainer.fit(model=model, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.callback_metrics

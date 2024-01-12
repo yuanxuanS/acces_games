@@ -12,7 +12,7 @@ defaults:
   - hydra: default.yaml
   - model: default.yaml
   - env: default.yaml
-
+  - graph_pool: default.yaml
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
   # - experiment: base_1.yaml # set baseline experiment
@@ -30,8 +30,10 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:   greedy_eval.yaml #default.yaml    #
+  - evaluate:   default.yaml    #greedy_eval.yaml #
 
+# fix graph
+fix_graph: true
 # task name, determines output directory path
 mode: "train"
 
