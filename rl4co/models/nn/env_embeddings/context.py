@@ -20,6 +20,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
         "scp": SCPContext,
         "cvrp": VRPContext,
         "svrp": SVRPContext,
+        "svrp_fix": SVRPContext,
         "sdvrp": VRPContext,
         "pctsp": PCTSPContext,
         "spctsp": PCTSPContext,

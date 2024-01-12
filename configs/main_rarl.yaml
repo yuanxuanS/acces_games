@@ -14,7 +14,7 @@ defaults:
   - model_adversary: am-ppo.yaml
   - model: am.yaml
   - env: default.yaml
-
+  - graph_pool: default.yaml
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
   # - experiment: base_1.yaml # set baseline experiment
@@ -32,7 +32,7 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:   default.yaml    #default.yaml    #greedy_eval_rarl.yaml #
+  - evaluate:   default.yaml     #greedy_eval_rarl.yaml #
 
 # task name, determines output directory path
 mode: "train_rarl"

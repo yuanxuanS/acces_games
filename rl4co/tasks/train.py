@@ -42,6 +42,11 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info(f"Instantiating environment <{cfg.env._target_}>")
     env = hydra.utils.instantiate(cfg.env)
 
+    if cfg.fix_graph:
+        graph_pool = hydra.utils.instantiate(cfg.graph_pool)
+        graph_pool.generate_datas()
+        env.get_fix_data(graph_pool)
+        
     # Note that the RL environment is instantiated inside the model
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model, env)

@@ -1,10 +1,14 @@
 # @package _global_
 
 defaults:
-  - override /env: svrp.yaml
+  
+  - override /env: svrp_fix.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: csv.yaml  #wandb.yaml
+  
+
+fix_graph: True
 
 
 env:
@@ -24,8 +28,8 @@ model_rarl:
   val_batch_size: 1024  #10 #
   test_batch_size: 1024 #10   #
   train_data_size: 1_280_000  #100  #
-  val_data_size: 1024 #100  #
-  test_data_size: 1024  #100 #
+  val_data_size: 10_000  #
+  test_data_size: 10_000  #100 #
 
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
@@ -37,12 +41,16 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [50, 110]
+    milestones: [200] # 200相当于不降低
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
+load_prog_from_path: null
+  # "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-01-09_08-39-55/rl4co/hmn0gzmw/checkpoints/epoch=99-step=250000.ckpt"
 
+train_with_pretrain: null
+  # "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-11_22-28-55/csv/version_0/checkpoints/epoch=106-step=627500.ckpt"
 
 model_adversary:
   opponent: null
@@ -58,7 +66,7 @@ model_adversary:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 150 #
+  max_epochs: 100 #
 
 seed: 1234
 
