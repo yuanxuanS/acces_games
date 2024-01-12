@@ -43,21 +43,63 @@ class SVRPEnv(CVRPEnv):
     _stochastic = True
     generate_method = "modelize" 
     
+    env_fixed = True
+    
 
-    def __init__(self, generate_method = "modelize", **kwargs):
+    def __init__(self, generate_method = "modelize", env_fix=False, **kwargs):
         super().__init__(**kwargs)
         
         self.generate_method = generate_method
         assert self.generate_method in ["uniform", "modelize"], "way of generate stochastic data is invalid"
 
-    @staticmethod
-    def load_data(fpath, batch_size=[]):
+        if env_fix:
+            SVRPEnv.env_fixed = True
+            SVRPEnv.name = "svrp_fix"
+        
+    
+    def get_fix_data(self, graph_pool):
+        if SVRPEnv.env_fixed:
+            
+            SVRPEnv.a_loc_with_depot = (
+                graph_pool.locs_data
+                .to(self.device)
+            )
+            SVRPEnv.a_demand = (
+            graph_pool.demand_data
+            .int()
+            + 1
+            ).float().to(self.device)
+        
+    def load_data(self, fpath, batch_size=[]):
         """Dataset loading from file
         Normalize demand and stochastic_demand by capacity to be in [0, 1]
         """
+        if SVRPEnv.name == "svrp_fix":
+            return self.load_fixed_data(fpath, batch_size)
         td_load = load_npz_to_tensordict(fpath)
         td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
         td_load.set("stochastic_demand", td_load["stochastic_demand"] / td_load["capacity"][:, None])
+        return td_load
+    
+    def load_fixed_data(self, fpath, batch_size):
+        td_load = load_npz_to_tensordict(fpath)
+        td_load["depot"] =SVRPEnv.a_loc_with_depot[:, 0, ...].repeat(batch_size, 1, 1).squeeze(1)
+        td_load["locs"]= SVRPEnv.a_loc_with_depot[:, 1:, ...].repeat(batch_size, 1, 1) 
+        td_load["demand"]= SVRPEnv.a_demand.repeat(batch_size, 1) / td_load["capacity"][:, None]
+        if SVRPEnv.generate_method == "modelize":
+            stochastic_demand = self.get_stoch_var(td_load["demand"].to("cpu"),
+                                                    td_load["locs"].to("cpu").clone(), 
+                                                    td_load["weather"][:, None, :].
+                                                    repeat(1, self.num_loc, 1).to("cpu"),
+                                                    None).squeeze(-1).float().to(self.device)
+        elif SVRPEnv.generate_method == "uniform":
+            stochastic_demand = (
+                torch.FloatTensor(*batch_size, self.num_loc)
+                .uniform_(self.min_demand - 1, self.max_demand - 1)
+                .int()
+                + 1
+            ).float().to(self.device)
+        td_load["stochastic_demand"]= stochastic_demand / td_load["capacity"][:, None]
         return td_load
     
     @property
@@ -144,6 +186,8 @@ class SVRPEnv(CVRPEnv):
     
     # @profile(stream=open('log_mem_svrp_generate_data.log', 'w+'))  
     def generate_data(self, batch_size, ) -> TensorDict:
+        if self.name == "svrp_fix":
+            return self.generate_fixed_data(batch_size)
         # Batch size input check
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
@@ -209,6 +253,68 @@ class SVRPEnv(CVRPEnv):
             device=self.device,
         )
 
+    def generate_fixed_data(self, batch_size, ) -> TensorDict:
+        # Batch size input check
+        batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
+
+        # Initialize the locations (including the depot which is always the first node)
+        batch_size_int = batch_size
+        if not isinstance(batch_size, int):
+            batch_size_int = batch_size[0]
+        locs_with_depot = SVRPEnv.a_loc_with_depot.repeat(batch_size_int, 1, 1)
+
+        # Initialize the demand for nodes except the depot
+        # Demand sampling Following Kool et al. (2019)
+        # Generates a slightly different distribution than using torch.randint
+        
+        
+        demand = SVRPEnv.a_demand.repeat(batch_size_int, 1)
+
+        # Initialize the weather
+        weather = (
+            torch.FloatTensor(*batch_size, 3)
+            .uniform_(-1, 1)
+        ).to(self.device)
+        
+        #  E(stochastic demand) = E(demand)
+        if self.generate_method == "uniform":
+            # print(f"generate data by uniform")
+            stochastic_demand = (
+                torch.FloatTensor(*batch_size, self.num_loc)
+                .uniform_(self.min_demand - 1, self.max_demand - 1)
+                .int()
+                + 1
+            ).float().to(self.device)
+        elif self.generate_method == "modelize":
+            # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
+
+            stochastic_demand = self.get_stoch_var(demand.to("cpu"),
+                                                   locs_with_depot[..., 1:, :].to("cpu").clone(), 
+                                                   weather[:, None, :].
+                                                   repeat(1, self.num_loc, 1).to("cpu"),
+                                                   None).squeeze(-1).float().to(self.device)
+
+        # Support for heterogeneous capacity if provided
+        if not isinstance(self.capacity, torch.Tensor):
+            capacity = torch.full((*batch_size,), self.capacity, device=self.device)
+        else:
+            capacity = self.capacity
+
+        
+        
+        return TensorDict(
+            {
+                "locs": locs_with_depot[..., 1:, :],
+                "depot": locs_with_depot[..., 0, :],
+                "demand": demand / CAPACITIES[self.num_loc],        # normalize demands
+                "stochastic_demand": stochastic_demand / CAPACITIES[self.num_loc],
+                "weather": weather,
+                "capacity": capacity,       # =1
+            },
+            batch_size=batch_size,
+            device=self.device,
+        )
+        
     @staticmethod
     # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
     def get_stoch_var(inp, locs, w, alphas=None, A=0.6, B=0.2, G=0.2):
@@ -349,7 +455,9 @@ class SVRPEnv(CVRPEnv):
         if batch_size is None:
             batch_size = self.batch_size if td is None else td["locs"].shape[:-2]
         if td is None or td.is_empty():
+            
             td = self.generate_data(batch_size=batch_size)
+                
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
         self.to(td.device)

@@ -1,0 +1,8 @@
+_target_: rl4co.envs.SVRPEnv
+name: svrp_fix
+
+num_loc: 20
+env_fix : true
+data_dir: ${paths.root_dir}/data/svrp_fix
+val_file: svrp_fix_modelize${env.num_loc}_val_seed4321.npz
+test_file: svrp_fix_modelize${env.num_loc}_test_seed1234.npz
