@@ -210,5 +210,6 @@ class REINFORCE(RL4COLitModule):
             state_dict = {k: v for k, v in state_dict.items() if "baseline" in k}
             state_dict = {k.replace("baseline.", "", 1): v for k, v in state_dict.items()}
             loaded.baseline.load_state_dict(state_dict)
+            print("load baseline done!")
 
         return cast(Self, loaded)
