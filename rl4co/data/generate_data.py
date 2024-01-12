@@ -18,6 +18,7 @@ DISTRIBUTIONS_PER_PROBLEM = {
     "scp": [None],
     "vrp": [None],
     "svrp": ["modelize", "uniform"],
+    "svrp_fix": ["modelize", "uniform"],
     "pctsp": [None],
     "op": ["const", "unif", "dist"],
     "mdpp": [None],
@@ -155,6 +156,45 @@ def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacit
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
 
+def generate_svrp_fix_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
+    # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
+    CAPACITIES = {
+        10: 20.0,
+        15: 25.0,
+        20: 30.0,
+        30: 33.0,
+        40: 37.0,
+        50: 40.0,
+        60: 43.0,
+        75: 45.0,
+        100: 50.0,
+        125: 55.0,
+        150: 60.0,
+        200: 70.0,
+        500: 100.0,
+        1000: 150.0,
+    }
+
+    # If capacities are provided, replace keys in CAPACITIES with provided values if they exist
+    if capacities is not None:
+        for k, v in capacities.items():
+            if k in CAPACITIES:
+                print(f"Replacing capacity for {k} with {v}")
+                CAPACITIES[k] = v
+    
+    
+    
+    weather = np.random.uniform(low=-1., high=1., size=(dataset_size, 3)).astype(
+            np.float32
+        )  # Weather, uniform float (-1, 1)
+    
+
+    return {
+
+        "weather": weather,
+        "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
+    }  # Capacity, same for whole dataset
+    
 # @profile(stream=open('logmem_get_stoch_var_gendata_rewrite.log', 'w+'))
 def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     n_problems,n_nodes,shape = inp.shape
@@ -426,11 +466,11 @@ def generate_dataset(
 def generate_default_datasets(data_dir, data_cfg):
     """Generate the default datasets used in the paper and save them to data_dir/problem"""
     # 传入大小的是，在测试时为了快速验证
-    # generate_dataset(data_dir=data_dir, dataset_size=data_cfg["val_data_size"], name="val", problem="all", seed=4321)
-    # generate_dataset(data_dir=data_dir, dataset_size=data_cfg["test_data_size"], name="test", problem="all", seed=1234)
+    generate_dataset(data_dir=data_dir, dataset_size=data_cfg["val_data_size"], name="val", problem="all", seed=4321)
+    generate_dataset(data_dir=data_dir, dataset_size=data_cfg["test_data_size"], name="test", problem="all", seed=1234)
     # 平时使用不传入大小的
-    generate_dataset(data_dir=data_dir, name="val", problem="all", seed=4321)
-    generate_dataset(data_dir=data_dir, name="test", problem="all", seed=1234)
+    # generate_dataset(data_dir=data_dir, name="val", problem="all", seed=4321)
+    # generate_dataset(data_dir=data_dir, name="test", problem="all", seed=1234)
     generate_dataset(
         data_dir=data_dir,
         name="test",

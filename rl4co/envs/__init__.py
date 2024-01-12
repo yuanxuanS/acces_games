@@ -1,6 +1,8 @@
 # Base environment
 from rl4co.envs.common.base import RL4COEnvBase
 
+# for fix env: svrp_fix
+from rl4co.envs.graph_pool import svrp_graph_pool
 # EDA
 from rl4co.envs.eda import DPPEnv, MDPPEnv
 
