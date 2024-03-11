@@ -6,7 +6,7 @@ import numpy as np
 
 env = SVRPEnv(num_loc=20) 
 # 使用test的数据集做evaluation
-dataset_f = "/home/panpan/rl4co/data/svrp/svrp_modelize20_test_seed1234.npz"
+dataset_f = "/home/panpan/rl4co/data/svrp_fix/svrp_fix_modelize20_test_seed1234.npz"
 # dataset_td = env.dataset(phase="test", filename=dataset_f)     
         
 baseline = "fixed"

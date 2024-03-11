@@ -16,14 +16,14 @@ env:
 
 logger:
   wandb:
-    project: "rl4co-adv"
+    project: "rl4co-psro"
     tags: ["adv-am", "${env.name}"]
     group: ${env.name}${env.num_loc}
     name: am-${env.name}${env.num_loc}
     offline: True
 
 
-model_rarl:
+model_psro:
   batch_size:  512 #10 #
   val_batch_size: 1024  #10 #
   test_batch_size: 1024 #10   #
@@ -66,7 +66,7 @@ model_adversary:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 100 #
+  max_epochs:  40  #100 #
 
 seed: 1200
 
