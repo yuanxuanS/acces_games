@@ -193,22 +193,26 @@ class PPOContiAdvPolicy(nn.Module):
             env: Environment to evaluate the action in.
         """
     
-        embeddings, _ = self.encoder(td)    # [batch, num_loc+1, dh]
+        # embeddings, _ = self.encoder(td)    # [batch, num_loc+1, dh]
         
-        actions_curr = self.conti_action_head(embeddings).mean(1)    # [batch,  18][mu sigma]
+        # actions_curr = self.conti_action_head(embeddings).mean(1)    # [batch,  18][mu sigma]
         
+        # if self.policy_dis == "Beta":
+        #     alpha = F.softplus(actions_curr[..., :9]) + 1.
+        #     beta = F.softplus(actions_curr[..., 9:]) + 1.       # alpha and beta need to be larger than 1
+        #     action_dist = torch.distributions.beta.Beta(alpha, beta)      # alpha, beta
+        #     actions_curr = action_dist.sample()
+        #     log_prob = action_dist.log_prob(actions_curr)      # action prob under current policy, [batch, 3]
+        out = self.forward(td, env, "train", return_entropy=True)
+        entropy = out["entropy"]
+        log_prob = out["log_likelihood_adv"]
         
-        if self.policy_dis == "Beta":
-            alpha = F.softplus(actions_curr[..., :9]) + 1.
-            beta = F.softplus(actions_curr[..., 9:]) + 1.       # alpha and beta need to be larger than 1
-            action_dist = torch.distributions.beta.Beta(alpha, beta)      # alpha, beta
-            log_prob = action_dist.log_prob(action)      # action prob under current policy, [batch, 3]
-            
-            assert log_prob.isfinite().all(), "Log p is not finite"
+        assert log_prob.isfinite().all(), "Log p is not finite"
 
-            # compute entropy
-            log_prob = torch.nan_to_num(log_prob, nan=0.0)
-            entropy = -(log_prob.exp() * log_prob).sum(dim=-1)  # [batch, decoder steps]
-            # entropy = entropy.sum(dim=1)  # [batch] -- sum over decoding steps
-            assert entropy.isfinite().all(), "Entropy is not finite"
+        # compute entropy
+        # log_prob = torch.nan_to_num(log_prob, nan=0.0)
+        # entropy = -(log_prob.exp() * log_prob).sum(dim=-1)  # [batch, decoder steps]
+        # # entropy = entropy.sum(dim=1)  # [batch] -- sum over decoding steps
+        # assert entropy.isfinite().all(), "Entropy is not finite"
+        # log_prob = torch.mean(embeddings)
         return log_prob, entropy

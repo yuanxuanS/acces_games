@@ -14,7 +14,7 @@ def check_unused_kwargs(class_, kwargs):
         print(f"Warning: {class_.__class__.__name__} does not use kwargs {kwargs}")
 
 
-class EvalRarlBase:
+class EvalPsroBase:
     """Base class for evaluation
 
     Args:
@@ -33,8 +33,6 @@ class EvalRarlBase:
     def __call__(self, policy, dataloader, adv, save_pt, **kwargs):
         """Evaluate the policy on the given dataloader with **kwargs parameter
         self._inner is implemented in subclasses and returns actions and rewards
-        policy: list, 多个policy，在一个adv下，同时对比
-        save_pt: list, 多个policy，在一个adv下，同时对比, 存储的路径
         """
 
         # Collect timings for evaluation (more accurate than timeit)
@@ -43,75 +41,56 @@ class EvalRarlBase:
         start_event.record()
 
         with torch.no_grad():
-            rewards_list = [[] for _ in range(len(policy))]
-            actions_list = [[] for _ in range(len(policy))]
-            td_all = []
+            rewards_list = []
+            actions_list = []
+
             for batch in tqdm(
                 dataloader, disable=not self.progress, desc=f"Running {self.name}"
             ):
-                
-                td = batch.to(next(policy[0].parameters()).device)
+                td = batch.to(next(policy.parameters()).device)
                 td = self.env.reset(td)
                 if adv:
                    out_adv = adv(td.clone())
-                   
+                   before_td = td.clone()
                    
                    td = self.env.reset_stochastic_demand(td, out_adv["action_adv"][..., None])
+                   after_td = td.clone()
                    
-                
-                for i in range(len(policy)):
-                    actions, rewards = self._inner(policy[i], td, **kwargs)
-                    rewards_list[i].append(rewards)
-                    actions_list[i].append(actions)
-                # 记录下所有的td数据以供后面画图使用
-                td_all.append(td)
+                # save td change
+                # save_td2txt(before_td.to("cpu"), "./test.npz")
+                actions, rewards = self._inner(policy, td, **kwargs)
+                rewards_list.append(rewards)
+                actions_list.append(actions)
 
-            for i in range(len(policy)):
-                rewards = torch.cat(rewards_list[i])
-                rewards_list[i] = rewards
-                # Padding: pad actions to the same length with zeros
-                max_length = max(action.size(-1) for action in actions_list[i])
-                actions = torch.cat(
-                    [
-                        torch.nn.functional.pad(action, (0, max_length - action.size(-1)))
-                        for action in actions_list[i]
-                    ],
-                    0,
-                )
-                actions_list[i] = actions
+            rewards = torch.cat(rewards_list)
 
-        td_all = torch.cat(td_all)
-        
+            # Padding: pad actions to the same length with zeros
+            max_length = max(action.size(-1) for action in actions)
+            actions = torch.cat(
+                [
+                    torch.nn.functional.pad(action, (0, max_length - action.size(-1)))
+                    for action in actions
+                ],
+                0,
+            )
+
         end_event.record()
         torch.cuda.synchronize()
         inference_time = start_event.elapsed_time(end_event)
 
-        rewards_mean = [rewards_list[i].mean() for i in range(len(policy))]
-        tqdm.write(f"Mean reward for {self.name}: {rewards_mean}")
+        tqdm.write(f"Mean reward for {self.name}: {rewards.mean():.4f}")
         tqdm.write(f"Time: {inference_time/1000:.4f}s")
 
         # Empty cache
         torch.cuda.empty_cache()
-        
-        # td.batch_size: torch.size([1808]), list,所以要索引
-        # # actions 47008, 为长度 batch 1808*padding后的长度26 
-        # reshape后: [batch, padding_action_length]
-        res_dicts = []
-        save_size = 2000        # 全部10000都存会崩溃
-        for i in range(len(policy)):
-            # tmp_actions = actions_list[i].reshape(td.batch_size[0], -1).cpu()  
-            tmp_actions = actions_list[i]
-            self.env.render(td.cpu().clone(), tmp_actions, save_pt=save_pt[i])
-            
-            tmp_dict = {
-                "actions": actions_list[i][:save_size].cpu(),
-                "rewards": rewards_list[i][:save_size].cpu(),
-                "inference_time": inference_time / len(policy),
-                "avg_reward": rewards_list[i].cpu().mean(),
-            }
-            res_dicts.append(tmp_dict)
-        
-        return res_dicts
+        tmp_actions = actions.reshape(td.batch_size[0], -1).cpu()      # actions是
+        self.env.render(td.cpu().clone(), tmp_actions, save_pt=save_pt)
+        return {
+            "actions": actions.cpu(),
+            "rewards": rewards.cpu(),
+            "inference_time": inference_time,
+            "avg_reward": rewards.cpu().mean(),
+        }
 
     def _inner(self, policy, td):
         """Inner function to be implemented in subclasses.
@@ -124,7 +103,7 @@ class EvalRarlBase:
             return out["reward"]
         else:
             return self.env.get_reward(td, out["actions"])
-class GreedyEval(EvalRarlBase):
+class GreedyEval(EvalPsroBase):
     """Evaluates the policy using greedy decoding and single trajectory"""
 
     name = "greedy"
@@ -145,7 +124,7 @@ class GreedyEval(EvalRarlBase):
         return out["actions"], rewards
 
 
-class AugmentationEval(EvalRarlBase):
+class AugmentationEval(EvalPsroBase):
     """Evaluates the policy via N state augmentations
     `force_dihedral_8` forces the use of 8 augmentations (rotations and flips) as in POMO
     https://en.wikipedia.org/wiki/Examples_of_groups#dihedral_group_of_order_8
@@ -187,7 +166,7 @@ class AugmentationEval(EvalRarlBase):
         return self.augmentation.num_augment
 
 
-class SamplingEval(EvalRarlBase):
+class SamplingEval(EvalPsroBase):
     """Evaluates the policy via N samples from the policy
 
     Args:
@@ -227,7 +206,7 @@ class SamplingEval(EvalRarlBase):
         return actions, rewards
 
 
-class GreedyMultiStartEval(EvalRarlBase):
+class GreedyMultiStartEval(EvalPsroBase):
     """Evaluates the policy via `num_starts` greedy multistarts samples from the policy
 
     Args:
@@ -264,7 +243,7 @@ class GreedyMultiStartEval(EvalRarlBase):
         return actions, rewards
 
 
-class GreedyMultiStartAugmentEval(EvalRarlBase):
+class GreedyMultiStartAugmentEval(EvalPsroBase):
     """Evaluates the policy via `num_starts` samples from the policy
     and `num_augment` augmentations of each sample.`
     `force_dihedral_8` forces the use of 8 augmentations (rotations and flips) as in POMO
@@ -354,7 +333,7 @@ def get_automatic_batch_size(eval_fn, start_batch_size=8192, max_batch_size=4096
     return batch_size
 
 
-def evaluate_rarl_policy(
+def evaluate_psro_policy(
     env,
     policy,
     adv,
@@ -365,8 +344,8 @@ def evaluate_rarl_policy(
     start_batch_size=8192,
     auto_batch_size=True,
     save_results=False,
-    save_fname=["results.npz"],     # policy个，对应
-    save_pt=[""],       # policy个，对应
+    save_fname="results.npz",
+    save_pt="",
     **kwargs,
 ):
     num_loc = getattr(env, "num_loc", None)
@@ -431,15 +410,14 @@ def evaluate_rarl_policy(
     # Run evaluation
     if adv:
         print("eval with adversary")
-    retvals_lst = eval_fn(policy, dataloader, adv, save_pt, **kwargs)
+    retvals = eval_fn(policy, dataloader, adv, save_pt, **kwargs)
 
     # Save results
     if save_results:
-        for i in range(len(policy)):
-            print("Saving results to {}".format(save_fname[i]))
-            np.savez(save_fname[i], **retvals_lst[i])
+        print("Saving results to {}".format(save_fname))
+        np.savez(save_fname, **retvals)
 
-    return retvals_lst
+    return retvals
 
 def save_td2txt(td, txt):
     

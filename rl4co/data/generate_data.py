@@ -205,10 +205,10 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     # noise = var_noise*noise     # multivariable normal distr, var_noise mean
     # noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
     
-    noise = var_noise*np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
+    noise = np.sqrt(var_noise)*np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
     noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
     
-    var_w = T*B
+    var_w = np.sqrt(T*B)
     # sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
     # alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
     # alphas /= alphas.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
@@ -219,13 +219,13 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     # alphas[signs] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
     
     # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
-    sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
+    sum_alpha = var_w[:, :, np.newaxis, :]*9      #? 4.5
     # alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
     alphas = np.random.random((n_problems, 1, 9, shape))      # =np.random.random, uniform dis(0, 1)
-    alphas_loc = locs.sum(-1)[..., np.newaxis, np.newaxis] * alphas
+    alphas_loc = locs.sum(-1)[..., np.newaxis, np.newaxis]/2 * alphas
     
     
-    alphas_loc /= alphas_loc.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
+    # alphas_loc /= alphas_loc.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
     alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
     alphas_loc = np.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
     signs = np.random.random((n_problems, n_nodes, 9, shape))
@@ -245,8 +245,8 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
                              np.roll(w,shift=2,axis=2)], 2)[..., np.newaxis]
             ).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
     tot_w = np.clip(tot_w, a_min=-var_w, a_max=var_w)
-    
     out = inp + tot_w + noise
+    out = np.clip(out, a_min=0.01, a_max=1e5)       # a_min a_max必须都是标量
     
     del sum_alpha, alphas_loc, signs, tot_w
     del T, noise, var_w

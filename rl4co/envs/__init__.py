@@ -30,6 +30,7 @@ ENV_REGISTRY = {
     "atsp": ATSPEnv,
     "cvrp": CVRPEnv,
     "svrp": SVRPEnv,
+    "svrp_fix": SVRPEnv,
     "dpp": DPPEnv,
     "ffsp": FFSPEnv,
     "mdpp": MDPPEnv,

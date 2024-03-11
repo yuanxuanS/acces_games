@@ -127,36 +127,69 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         log.info(f"Start evaluation by {method}!")
         
         if cfg.get("mode") == "evaluate":
-            ckpt_rarl_path = cfg.get("ckpt_rarl_path")
+            ckpt_rarl_path = cfg.get("ckpt_rarl_path")      # for adv
             rarl_model = model.load_from_checkpoint(ckpt_rarl_path)
-
-            ckpt_prog_path = cfg.get("ckpt_prog_path")
-
-            prog_ = "rarltrainedprog"
-            if cfg.get("trained_rarl_prog"):
-                
-                evaluate_model = rarl_model.protagonist
-            else:
-                evaluate_model = model.protagonist.load_from_checkpoint(ckpt_prog_path)
-                prog_ = "nonrarltrainedprog"
-                
+            
+            dataset = env.dataset(phase="test", batch_size=cfg.model_rarl.test_data_size)     # 使用test的数据集做evaluation
+        
+            
+            change_data_model = "_nochange_" # if change env model
+            withadv = "adv"
             if cfg.get("eval_withadv"):
                 adv = rarl_model.adversary
-                save_fname = cfg.get("evaluate_loc") + "/evalu_5adv_"+prog_+"_"+method+".npz"
+                
             else:
                 adv = None
-                save_fname = cfg.get("evaluate_loc") + "/evalu_5noadv_"+prog_+"_"+method+".npz"
+                withadv = "noadv"
+                
             
-            
+            save_fname_lst = []
+            save_pt_lst = []
+            policy_lst = []
+            if cfg.get("eval_rarl"):
+                # prog_ = "rarlprog"
+                
+                if cfg.get("another"):
+                    from ..model_MA.am_amppo import AM_PPO
+                    model_tmp = AM_PPO(env, protagonist, adversary)
+                    ckpt_rarl_prog_path = cfg.get("another_rarl_prog_path")
+                    model_rarl_tmp = model_tmp.load_from_checkpoint(ckpt_rarl_prog_path)
+                    evaluate_model = model_rarl_tmp.protagonist
+                else:
+                    evaluate_model = rarl_model.protagonist
+                
+                policy_lst.append(evaluate_model.policy)
+                save_fname = cfg.get("evaluate_loc") + "/evalu_"+withadv+"_rarlprog_"+method+change_data_model+".npz"
+                save_fname_lst.append(save_fname)
+                save_pt = './graphs/graph_'+withadv+"_rarlprog_"+change_data_model+".png"
+                save_pt_lst.append(save_pt)
+                # evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=save_fname, 
+                #              save_pt = save_pt)
+
+            if cfg.get("eval_rl"):
+                ckpt_prog_path = cfg.get("ckpt_prog_path")
+                evaluate_model_tmp = model.protagonist.load_from_checkpoint(ckpt_prog_path)
+                
+                policy_lst.append(evaluate_model_tmp.policy)
+                save_fname_tmp = cfg.get("evaluate_loc") + "/evalu_"+withadv+"_rlprog_"+method+change_data_model+".npz"
+                save_fname_lst.append(save_fname_tmp)
+                save_pt_tmp = './graphs/graph_'+withadv+"_rlprog_"+change_data_model+".png"
+                save_pt_lst.append(save_pt_tmp)
+                # evaluate_rarl_policy(env, evaluate_model_tmp.policy, adv, dataset, method, save_results=True, save_fname=save_fname, 
+                #              save_pt = './graphs/graph_'+withadv+"_rlprog_"+change_data_model+".png")
+
+            evaluate_rarl_policy(env, policy_lst, adv, dataset, method, save_results=True, save_fname=save_fname_lst, 
+                         save_pt = save_pt_lst)
         elif cfg.get("mode") == "train":
             ckpt_path = trainer.checkpoint_callback.best_model_path
             evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)
+           
             save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
-        log.info(f"Best ckpt path: {ckpt_rarl_path}")
+        # log.info(f"Best ckpt path: {ckpt_rarl_path}")
         
-        dataset = env.dataset(phase="test", batch_size=cfg.model_rarl.test_batch_size)     # 使用test的数据集做evaluation
         
-        evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=save_fname)
+            evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=[save_fname], 
+                                save_pt = ['./graphs/graph_'+withadv+"_rarlprog_"+change_data_model+".png"])
 
     return metric_dict, object_dict
 

@@ -133,15 +133,15 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
 
     def inference_step(self, batch: Any, batch_idx: int, phase: str):
         # Evaluate old actions, log probabilities, and rewards
-        with torch.no_grad():
-            td = self.env.reset(batch)  # note: clone needed for dataloader
-            out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
-            td = self.env.reset_stochastic_demand(td, out["action_adv"][..., None])    # env transition: get new real demand
-            if self.opponent:       # get reward from current run of opponent
-                assert td.get("reward", default=None) == None   # if get reward currently from oppo, must no reward in td now  
-                oppo_reward = self.opponent(td).forward()
-                td["reward"] = oppo_reward["rewards"]
-                out["reward"] = td["reward"]
+        # with torch.no_grad():
+        td = self.env.reset(batch)  # note: clone needed for dataloader
+        out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
+        td = self.env.reset_stochastic_demand(td, out["action_adv"][..., None])    # env transition: get new real demand
+        if self.opponent:       # get reward from current run of opponent
+            assert td.get("reward", default=None) == None   # if get reward currently from oppo, must no reward in td now  
+            oppo_reward = self.opponent(td).forward()
+            td["reward"] = oppo_reward["rewards"]
+            out["reward"] = td["reward"]
         return td, out
     
     def update_step(self, td, out, phase, dataloader_idx: int = None, optimizer=None):
@@ -177,17 +177,17 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                     log_prob, entropy = self.policy.evaluate_action(
                         sub_td, action=sub_td["action_adv"]
                     )
-
+                     
                     # Compute the ratio of probabilities of new and old actions: log(action|s)=log(pw1*pw2*pw3) = log(pw1) + log(pw2) + log(pw3)
-                    ratio = torch.exp((log_prob.sum(-1) - sub_td["log_likelihood_adv"].sum(-1))).view(
+                    ratio = torch.exp((log_prob.sum(-1) - sub_td["log_likelihood_adv"].sum(-1).detach())).view(
                         -1, 1
                     )  # ? [batch*num_loc]
 
-                    # Compute the advantage
+                    # # Compute the advantage
                     value_pred = self.critic(sub_td)  # [batch, 1]
                     adv = previous_reward - value_pred.detach()
 
-                    # Normalize advantage
+                    # # Normalize advantage
                     if self.ppo_cfg["normalize_adv"]:
                         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
@@ -206,11 +206,10 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                     value_loss = F.huber_loss(value_pred, previous_reward)
 
                     # compute total loss
-                    loss = (
-                        surrogate_loss
-                        + self.ppo_cfg["vf_lambda"] * value_loss
+                    loss = surrogate_loss   \
+                        + self.ppo_cfg["vf_lambda"] * value_loss    \
                         - self.ppo_cfg["entropy_lambda"] * entropy.mean()
-                    )
+                    
 
                     # perform manual optimization following the Lightning routine
                     # https://lightning.ai/docs/pytorch/stable/common/optimization.html
@@ -220,6 +219,7 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                         opt = optimizer
                     opt.zero_grad()
                     self.manual_backward(loss)
+                    # loss.backward()
                     if self.ppo_cfg["max_grad_norm"] is not None:
                         self.clip_gradients(
                             opt,

@@ -301,7 +301,7 @@ class CVRPEnv(RL4COEnvBase):
         self.done_spec = UnboundedDiscreteTensorSpec(shape=(1,), dtype=torch.bool)
 
     @staticmethod
-    def render(td: TensorDict, actions=None, ax=None):
+    def render(td: TensorDict, actions=None, ax=None, **kwargs):
         import matplotlib.pyplot as plt
         import numpy as np
 
@@ -429,3 +429,5 @@ class CVRPEnv(RL4COEnvBase):
         ax.set_xlim(-0.05, 1.05)
         ax.set_ylim(-0.05, 1.05)
         plt.show()
+        if kwargs["save_pt"]:
+            plt.savefig(kwargs["save_pt"])
