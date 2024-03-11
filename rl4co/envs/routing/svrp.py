@@ -99,7 +99,7 @@ class SVRPEnv(CVRPEnv):
                 .int()
                 + 1
             ).float().to(self.device)
-        td_load["stochastic_demand"]= stochastic_demand / td_load["capacity"][:, None]
+        td_load["stochastic_demand"]= stochastic_demand / td_load["capacity"][:, None].to(self.device)
         return td_load
     
     @property
@@ -337,18 +337,18 @@ class SVRPEnv(CVRPEnv):
         
         var_noise = T*G
 
-        noise = var_noise*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
-        noise = torch.clamp(noise, min=-var_noise)
+        noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        noise = torch.clamp(noise, min=-var_noise, max=var_noise)
 
-        var_w = T*B
+        var_w = torch.sqrt(T*B)
         # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
-        sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
+        sum_alpha = var_w[:, :, None, :]*9      #? 4.5
         
         if alphas is None:  
             alphas = torch.rand((n_problems, 1, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas_loc = locs.sum(-1)[..., None, None] * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
+        alphas_loc = locs.sum(-1)[..., None, None]/2 * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
             # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
+        # alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
         alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
         alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
         signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
@@ -360,8 +360,8 @@ class SVRPEnv(CVRPEnv):
         w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
         
         tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
-        tot_w = torch.clamp(tot_w, min=-var_w)
-        out = inp_ + tot_w + noise
+        tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
         
         # del tot_w, noise
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
@@ -489,3 +489,203 @@ class SVRPEnv(CVRPEnv):
         )
         td_reset.set("action_mask", self.get_action_mask(td_reset))
         return td_reset
+    
+    
+    @staticmethod
+    def complete_penaltied_actions(actions, demands, scale_cap):
+        '''
+        actions: 1dim, length=padding后的长度(之前补全最长的)
+        demands: 1dim, actions对应的数据需求。 
+        scale_cap: 标量，代表车的最大容量， 非归一化
+        '''
+        # 补充，第0元素是 depot的需求， =-cap
+        demands = torch.cat([torch.tensor([-scale_cap]), demands])
+        
+        used_cap = torch.zeros((1), device=actions.device)
+        penaltied_actions = []
+        for i in range(actions.size(0)):
+            penaltied_actions.append(int(actions[i].cpu()))
+            used_cap += demands[actions[i]]  # This will reset/make capacity negative if i == 0, e.g. depot visited
+                # Cannot use less than 0
+            used_cap[used_cap < 0] = 0
+            if used_cap > scale_cap + 1e-5:        # 1 dim
+                # print("Used more than capacity")
+                penaltied_actions.append(0)     # 不能满足需求，回到depot，插入0节点
+                penaltied_actions.append(int(actions[i].cpu())) # 再返回当前节点
+                used_cap = demands[actions[i]]       # 当前用过的容量，重新变为该节点的需求
+        return torch.tensor(penaltied_actions, device="cpu")
+                
+    @staticmethod
+    def render(td: TensorDict, actions=None, ax=None, **kwargs):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from matplotlib import cm, colormaps
+
+        num_routine = (actions == 0).sum().item() + 2
+        base = colormaps["nipy_spectral"]
+        color_list = base(np.linspace(0, 1, num_routine))
+        cmap_name = base.name + str(num_routine)
+        out = base.from_list(cmap_name, color_list, num_routine)
+
+        if ax is None:
+            # Create a plot of the nodes
+            _, ax = plt.subplots()
+
+        td = td.detach().cpu()
+
+        if actions is None:
+            actions = td.get("action", None)
+
+        # if batch_size greater than 0 , we need to select the first batch element
+        if td.batch_size != torch.Size([]):
+            td = td[0]
+            actions = actions[0]
+
+        locs = td["locs"]
+        scale = CAPACITIES.get(td["locs"].size(-2) - 1, 1)
+        demands = td["demand"] * scale
+        real_demands = td["real_demand"] * scale
+
+        # svrp中需要对action惩罚的loc做0的插入，再绘图
+        actions = SVRPEnv.complete_penaltied_actions(actions, real_demands, scale)
+        print("complete actions is ", actions)
+        # add the depot at the first action and the end action
+        actions = torch.cat([torch.tensor([0]), actions, torch.tensor([0])])
+
+        # gather locs in order of action if available
+        if actions is None:
+            log.warning("No action in TensorDict, rendering unsorted locs")
+        else:
+            locs = locs
+
+        # Cat the first node to the end to complete the tour
+        x, y = locs[:, 0], locs[:, 1]
+
+        # plot depot
+        ax.scatter(
+            locs[0, 0],
+            locs[0, 1],
+            edgecolors=cm.Set2(2),
+            facecolors="none",
+            s=100,
+            linewidths=2,
+            marker="s",
+            alpha=1,
+        )
+
+        # plot visited nodes
+        ax.scatter(
+            x[1:],
+            y[1:],
+            edgecolors=cm.Set2(0),
+            facecolors="none",
+            s=50,
+            linewidths=2,
+            marker="o",
+            alpha=1,
+        )
+
+        move_x = 0.08        # text整体位置向右平移
+        # plot demand bars
+        for node_idx in range(1, len(locs)):
+            ax.add_patch(
+                plt.Rectangle(
+                    (locs[node_idx, 0] - 0.005, locs[node_idx, 1] + 0.015),
+                    0.01,   # width
+                    3*demands[node_idx - 1] / (scale * 10),       # height
+                    edgecolor=cm.Set2(0),
+                    facecolor=cm.Set2(0),
+                    fill=True,
+                )
+            )
+            
+        # text node idx
+        for node_idx in range(1, len(locs)):
+            ax.text(
+                locs[node_idx, 0] - 0.18 + move_x,
+                locs[node_idx, 1] - 0.025,
+                f"{node_idx}:",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=10,
+                color="b",
+            )
+            
+        # text demand
+        for node_idx in range(1, len(locs)):
+            ax.text(
+                locs[node_idx, 0] + move_x,
+                locs[node_idx, 1] - 0.025,
+                f"{demands[node_idx-1].item():.2f}",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=10,
+                color=cm.Set2(0),
+            )
+            
+        
+        # plot real demand bars
+        for node_idx in range(1, len(locs)):
+            ax.add_patch(
+                plt.Rectangle(
+                    (locs[node_idx, 0] - 0.005, locs[node_idx, 1] + 0.015),
+                    0.005,
+                    3*real_demands[node_idx - 1] / (scale * 10),
+                    edgecolor=cm.Set2(1),
+                    facecolor=cm.Set2(1),
+                    fill=True,
+                )
+            )
+
+        # text real demand
+        for node_idx in range(1, len(locs)):
+            ax.text(
+                locs[node_idx, 0] - 0.085+ move_x,
+                locs[node_idx, 1] - 0.025,
+                f"{real_demands[node_idx-1].item():.2f} |",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=10,
+                color=cm.Set2(1),
+            )
+
+        # text depot
+        ax.text(
+            locs[0, 0],
+            locs[0, 1] - 0.025,
+            "Depot",
+            horizontalalignment="center",
+            verticalalignment="top",
+            fontsize=10,
+            color=cm.Set2(2),
+        )
+
+        # plot actions
+        color_idx = 0
+        for action_idx in range(len(actions) - 1):
+            if actions[action_idx] == 0:
+                color_idx += 1
+            from_loc = locs[actions[action_idx]]
+            to_loc = locs[actions[action_idx + 1]]
+            ax.plot(
+                [from_loc[0], to_loc[0]],
+                [from_loc[1], to_loc[1]],
+                color=out(color_idx),
+                lw=1,
+            )
+            ax.annotate(
+                "",
+                xy=(to_loc[0], to_loc[1]),
+                xytext=(from_loc[0], from_loc[1]),
+                arrowprops=dict(arrowstyle="-|>", color=out(color_idx)),
+                size=15,
+                annotation_clip=False,
+            )
+
+        # Setup limits and show
+        ax.set_xlim(-0.05, 1.05)
+        ax.set_ylim(-0.05, 1.05)
+        plt.show()
+        if kwargs["save_pt"]:
+            plt.savefig(kwargs["save_pt"])

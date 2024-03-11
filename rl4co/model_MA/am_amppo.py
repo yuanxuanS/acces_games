@@ -20,6 +20,7 @@ from rl4co.utils.optim_helpers import create_optimizer, create_scheduler
 from rl4co.utils.pylogger import get_pylogger
 
 from lightning.pytorch.utilities import grad_norm
+from rl4co.utils.lightning import get_lightning_device
 
 from memory_profiler import profile
 import time
@@ -202,8 +203,14 @@ class AM_PPO(RL4COMarlLitModule):
                 logger.save()
 
     def post_setup_hook(self):
-        """Hook to be called after setup. Can be used to set up subclasses without overriding `setup`"""
-        pass
+        # Make baseline taking model itself and train_dataloader from model as input
+        self.protagonist.baseline.setup(
+            self.protagonist.policy,
+            self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+            dataset_size=self.data_cfg["val_data_size"],
+        )
 
     def configure_optimizers(self, parameters=None):
         """
@@ -220,7 +227,7 @@ class AM_PPO(RL4COMarlLitModule):
             prog_optim_dict["optimizer"] = prog_optim_cls[0]
             prog_optim_dict["lr_scheduler"] = prog_lrsche_dict
         else:
-            prog_optim_dict["optimizer"] = prog_optim_cls
+            prog_optim_dict["optimizer"] = prog_optim
             
         # adv_optim_lst, adv_sche_dict = self.adversary.configure_optimizers()
         adv_optim_dict = {}
@@ -230,7 +237,7 @@ class AM_PPO(RL4COMarlLitModule):
             adv_optim_dict["optimizer"] = adv_optim_cls[0]
             adv_optim_dict["lr_scheduler"] = adv_lrsche_dict
         else:
-            adv_optim_dict["optimizer"] = adv_optim_cls
+            adv_optim_dict["optimizer"] = adv_optim
         
         # sche_dict = {"prog": prog_optim, "adv":adv_optim}
         return (prog_optim_dict, adv_optim_dict)
@@ -352,6 +359,16 @@ class AM_PPO(RL4COMarlLitModule):
         return self._dataloader(self.test_dataset, self.test_batch_size)
 
     def on_train_epoch_end(self):
+        """Callback for end of training epoch: we evaluate the baseline"""
+        self.protagonist.baseline.epoch_callback(
+            self.protagonist.policy,
+            env=self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+            epoch=self.current_epoch,
+            dataset_size=self.data_cfg["val_data_size"],
+        )
+        
         """Called at the end of the training epoch. This can be used for instance to update the train dataset
         with new data (which is the case in RL).
         """
@@ -370,7 +387,14 @@ class AM_PPO(RL4COMarlLitModule):
         """Wrap dataset with policy-specific wrapper. This is useful i.e. in REINFORCE where we need to
         collect the greedy rollout baseline outputs.
         """
-        return dataset
+        """Wrap dataset from baseline evaluation. Used in greedy rollout baseline"""
+
+        return self.protagonist.baseline.wrap_dataset(
+            dataset,
+            self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+        )
 
     def _dataloader(self, dataset, batch_size, shuffle=False):
         """Handle both single datasets and list / dict of datasets"""
