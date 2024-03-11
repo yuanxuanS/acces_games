@@ -33,7 +33,7 @@ defaults:
   - evaluate:   default.yaml    #greedy_eval.yaml #
 
 # fix graph
-fix_graph: true
+fix_graph: false
 # task name, determines output directory path
 mode: "train"
 

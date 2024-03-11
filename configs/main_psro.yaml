@@ -10,7 +10,7 @@ defaults:
   - paths: default.yaml
   - extras: default.yaml
   - hydra: default.yaml
-  - model_rarl: am_am-ppo.yaml   # 
+  - model_psro: psro_am-ppo.yaml   # 
   - model_adversary: am-ppo.yaml
   - model: am.yaml
   - env: default.yaml
@@ -20,7 +20,7 @@ defaults:
   # - experiment: base_1.yaml # set baseline experiment
   # - experiment: routing/am.yaml # set baseline experiment
   # - new_experiment: base_svrp.yaml
-  - new_experiment: RARL/am_am-ppo.yaml #routing/am.yaml
+  - new_experiment: PSRO/psro_am-ppo.yaml 
   # config for hyperparameter optimization
   - hparams_search: null
 
@@ -32,10 +32,10 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:    default.yaml     #greedy_eval_rarl.yaml #
+  - evaluate:   default.yaml     #greedy_eval_psro.yaml #
 
 # task name, determines output directory path
-mode: "train_rarl"
+mode: "train_psro"
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs

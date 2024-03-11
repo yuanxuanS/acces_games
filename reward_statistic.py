@@ -44,7 +44,7 @@ def statis_reward(y, save_path, prefix, color):
         
 # 主函数
 def main():
-    file_path = "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-10_21-14-54"
+    file_path = "/home/panpan/rl4co/logs/train_rarl/runs/svrp_fix20/am-svrp_fix20/2024-01-12_21-33-13"
     # 替换为你的CSV文件路径
     npz_rarl_p = file_path + '/evalu_5adv_rarltrainedprog_greedy.npz'
     npz_p = file_path + '/evalu_5adv_nonrarltrainedprog_greedy.npz'

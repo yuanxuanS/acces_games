@@ -3,7 +3,7 @@ import wandb
 from lightning.pytorch.loggers import WandbLogger, CSVLogger
 
 from rl4co.envs import SVRPEnv
-from rl4co.model_rarl import AM_PPO
+from rl4co.model_MA import AM_PPO
 from rl4co.models.zoo.am import AttentionModel
 
 from rl4co.model_adversary import PPOContiAdvModel
