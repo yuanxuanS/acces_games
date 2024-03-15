@@ -155,16 +155,12 @@ class Protagonist:
             strategy = strategy.tolist()
         self.strategy = strategy
     
-    def get_best_response(self, adversary, cfg):
+    def get_best_response(self, adversary, cfg, callbacks, logger):
         '''
         fix adversary and update Protagonist
         '''
         print("===== in protagonist bs ====")
-        log.info("Instantiating callbacks...")
-        callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
-
-        log.info("Instantiating loggers...")
-        logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
+    
 
         log.info("Instantiating trainer...")
         trainer: RL4COTrainer = hydra.utils.instantiate(
@@ -276,16 +272,12 @@ class Adversary:
             strategy = strategy.tolist()
         self.strategy = strategy
     
-    def get_best_response(self, protagonist, cfg):
+    def get_best_response(self, protagonist, cfg, callbacks, logger):
         '''
         fix Protagonist and update adversary
         '''
         print("===== in adversary bs ====")
-        log.info("Instantiating callbacks...")
-        callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
-
-        log.info("Instantiating loggers...")
-        logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
+        
 
         log.info("Instantiating trainer...")
         trainer: RL4COTrainer = hydra.utils.instantiate(
@@ -333,10 +325,17 @@ class Adversary:
 def run_psro(cfg: DictConfig):
     
     # trainer.logger = logger
+    log.info("Instantiating callbacks...")
+    callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
 
-    epochs = 2
+    log.info("Instantiating loggers...")
+    logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
+
+    epochs = 5
     epsilon = 0.01      # prog, adver的bs差距阈值，小于判断为 均衡
-    env = SVRPEnv(num_loc=20) 
+    log.info(f"Instantiating environment <{cfg.env._target_}>")
+    env = hydra.utils.instantiate(cfg.env)
+
     # 各自初始化1个policy
     protagonist = Protagonist(AttentionModel, AttentionModelPolicy, env)
     adversary = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
@@ -349,9 +348,9 @@ def run_psro(cfg: DictConfig):
     adversary.strategy = [1.]
     # 计算出来的bs的reward
     
-    protagonist.policies[0], prog_bs_reward = protagonist.get_best_response(adversary, cfg)
+    protagonist.policies[0], prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger)
     adversary.policies[0], adversary.correspond_critic[0], adver_bs_reward = adversary.get_best_response(protagonist,
-                                                                                                          cfg)
+                                                                                                          cfg, callbacks, logger)
 
     ## 计算初始payoff矩阵: row-prota, col-adver
     # 改：分别构建 prog, adv的算法model，for r c 遍历只需要重新load网络model
@@ -373,10 +372,10 @@ def run_psro(cfg: DictConfig):
     print(protagonist.policy_number)
     for _ in range(epochs):
 
-        bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg)
+        bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger)
         protagonist.add_policy(bs_adversary)
 
-        bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg)
+        bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
         adversary.add_policy(bs_protagonist, bs_protagonist_critic)
         
         # 判断是否达到平衡
