@@ -75,8 +75,8 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         env: RL4COEnvBase,
         protagonist: Union[str, LightningModule] = None,
         adversary: Union[str, LightningModule] = None,
-        fix_protagonist: bool = False,
-        fix_adversary: bool = True,
+        fix_protagonist: bool = True,
+        fix_adversary: bool = False,
         batch_size: int = 512,
         val_batch_size: int = None,
         test_batch_size: int = None,
@@ -150,6 +150,9 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
 
         self.shuffle_train_dataloader = shuffle_train_dataloader
         self.dataloader_num_workers = dataloader_num_workers
+
+        # 用于记录best response的val reward
+        self.last_val_reward = None
 
     def instantiate_metrics(self, metrics: dict):
         """Dictionary of metrics to be logged at each phase"""
@@ -277,6 +280,10 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
             sync_dist=True,
             add_dataloader_idx=False,  # we add manually above
         )
+        # print("this metrics", metrics)
+        key = "val/reward"
+        if phase == "val" and key in metrics:
+            self.last_val_reward = metrics[key]
         return metrics
 
     def forward(self, td, with_adv, phase, **kwargs):

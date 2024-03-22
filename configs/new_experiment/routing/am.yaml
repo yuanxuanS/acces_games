@@ -39,6 +39,6 @@ model:
 trainer:
   max_epochs: 100 #3 #
 
-seed: 1200
+seed: 1240
 
 evaluate_method: "greedy"   #["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]

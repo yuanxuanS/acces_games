@@ -149,7 +149,7 @@ class AM_PPO(RL4COMarlLitModule):
 
         if not metrics:
             log.info("No metrics specified, using default")
-        self.train_metrics = metrics.get("train", ["loss", "reward"])
+        self.train_metrics = metrics.get("train", ["loss", "reward", "adv_loss"])
         self.val_metrics = metrics.get("val", ["reward"])
         self.test_metrics = metrics.get("test", ["reward"])
         self.log_on_step = metrics.get("log_on_step", True)
@@ -310,8 +310,8 @@ class AM_PPO(RL4COMarlLitModule):
         # if False:
         if phase == "train":
             # adv update
-            if self.current_epoch < 90:     # fix adv after 90 epoch
-                if self.current_epoch % 5 == 0:
+            if self.current_epoch < 100: #<90:     # fix adv after 90 epoch
+                if self.current_epoch % 2 == 0:
                     out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
         
                 
