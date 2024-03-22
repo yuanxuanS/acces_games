@@ -161,13 +161,12 @@ class Protagonist:
         fix adversary and update Protagonist
         '''
         print("===== in protagonist bs ====")
-        early_stopping = EarlyStopping(monitor='val/reward', min_delta=0.00, patience=10, mode="max")      # max代表曲线上升，阈值达到-7.99; 否则默认min
-        callbacks.append(early_stopping)  
+        
         
         log.info("Instantiating trainer...")
         trainer: RL4COTrainer = hydra.utils.instantiate(
             cfg.trainer,
-            max_epochs=35,
+            max_epochs=25,
             callbacks=callbacks,
             logger=logger,
         )
@@ -336,9 +335,8 @@ def run_psro(cfg: DictConfig):
     # trainer.logger = logger
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
-    # early_stopping = EarlyStopping(monitor='val/reward', stopping_threshold=-7.99, patience=10, mode="max")      # max代表曲线上升，阈值达到-7.99; 否则默认min
-    # callbacks.append(early_stopping)
-        
+    early_stopping = EarlyStopping(monitor='val/reward', min_delta=0.00, patience=10, mode="max")      # max代表曲线上升，阈值达到-7.99; 否则默认min
+    callbacks.append(early_stopping)  
 
     log.info("Instantiating loggers...")
     logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
