@@ -20,14 +20,14 @@ logger:
     tags: ["adv-am", "${env.name}"]
     group: ${env.name}${env.num_loc}
     name: am-${env.name}${env.num_loc}
-    offline: True
+    offline: False
 
 
 model_psro:
-  batch_size:  512 #10 #
+  batch_size:  10 #
   val_batch_size: 1024  #10 #
   test_batch_size: 1024 #10   #
-  train_data_size: 640_000  #100  #
+  train_data_size: 100  #
   val_data_size: 10_000  #
   test_data_size: 10_000  #100 #
 
@@ -41,13 +41,13 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [25, 30] # 200相当于不降低
+    milestones: [80, 95] # 200相当于不降低
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-03-03_10-02-53/rl4co/7dn06gfe/checkpoints/epoch=99-step=125000.ckpt"
-# null
+load_prog_from_path: null
+  # "/home/panpan/rl4co/logs/train/runs/svrp_fix20/am-svrp_fix20/2024-01-12_15-31-43/rl4co/pk5pvv6j/checkpoints/epoch=21-step=55000.ckpt"
 
 train_with_pretrain: null
   # "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-11_22-28-55/csv/version_0/checkpoints/epoch=106-step=627500.ckpt"
@@ -55,18 +55,18 @@ train_with_pretrain: null
 model_adversary:
   opponent: null
   optimizer_kwargs:
-    lr: 1e-3
+    lr: 1e-4
     weight_decay: 0
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [2, 4]
+    milestones: [80, 95]
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-# trainer:
-#   # max_epochs:  50 #
+trainer:
+  max_epochs:  50 #
 
 seed: 1200
 
