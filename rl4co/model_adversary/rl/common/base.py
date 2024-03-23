@@ -137,7 +137,8 @@ class RL4COAdversaryLitModule(LightningModule):
         """Dictionary of metrics to be logged at each phase"""
 
         if not metrics:
-            log.info("No metrics specified, using default")
+            # log.info("No metrics specified, using default")
+            pass
         self.train_metrics = metrics.get("train", ["loss", "reward"])
         self.val_metrics = metrics.get("val", ["reward"])
         self.test_metrics = metrics.get("test", ["reward"])
@@ -152,7 +153,7 @@ class RL4COAdversaryLitModule(LightningModule):
             We also send to the loggers all hyperparams that are not `nn.Module` (i.e. the policy).
             Apparently PyTorch Lightning does not do this by default.
         """
-        log.info("Setting up batch sizes for train/val/test")
+        # log.info("Setting up batch sizes for train/val/test")
         train_bs, val_bs, test_bs = (
             self.data_cfg["batch_size"],
             self.data_cfg["val_batch_size"],
@@ -162,7 +163,7 @@ class RL4COAdversaryLitModule(LightningModule):
         self.val_batch_size = train_bs if val_bs is None else val_bs
         self.test_batch_size = self.val_batch_size if test_bs is None else test_bs
 
-        log.info("Setting up datasets")
+        # log.info("Setting up datasets")
 
         # Create datasets automatically. If found, this will skip
         if self.data_cfg["generate_data"]:
@@ -204,7 +205,7 @@ class RL4COAdversaryLitModule(LightningModule):
         if parameters is None:
             parameters = self.policy.parameters()
 
-        log.info(f"Instantiating optimizer <{self._optimizer_name_or_cls}>")
+        # log.info(f"Instantiating optimizer <{self._optimizer_name_or_cls}>")
         if isinstance(self._optimizer_name_or_cls, str):
             optimizer = create_optimizer(
                 parameters, self._optimizer_name_or_cls, **self.optimizer_kwargs
@@ -220,7 +221,7 @@ class RL4COAdversaryLitModule(LightningModule):
         if self._lr_scheduler_name_or_cls is None:
             return optimizer
         else:
-            log.info(f"Instantiating LR scheduler <{self._lr_scheduler_name_or_cls}>")
+            # log.info(f"Instantiating LR scheduler <{self._lr_scheduler_name_or_cls}>")
             if isinstance(self._lr_scheduler_name_or_cls, str):
                 scheduler = create_scheduler(
                     optimizer, self._lr_scheduler_name_or_cls, **self.lr_scheduler_kwargs
@@ -269,7 +270,7 @@ class RL4COAdversaryLitModule(LightningModule):
         if kwargs.get("env", None) is None:
             env = self.env
         else:
-            log.info("Using env from kwargs")
+            # log.info("Using env from kwargs")
             env = kwargs.pop("env")
         return self.policy(td, env, **kwargs)
 
@@ -308,7 +309,7 @@ class RL4COAdversaryLitModule(LightningModule):
         """
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
         self.train_dataset = self.wrap_dataset(train_dataset)
-        log.info("end of an epoch")
+        # log.info("end of an epoch")
         print(f"end of an epoch, time {time.time()}")
 
     def wrap_dataset(self, dataset):
