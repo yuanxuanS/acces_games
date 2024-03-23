@@ -77,7 +77,7 @@ class AutoregressivePolicy(nn.Module):
         self.env_name = env_name
 
         if encoder is None:
-            log.info("Initializing default GraphAttentionEncoder")
+            # log.info("Initializing default GraphAttentionEncoder")
             self.encoder = GraphAttentionEncoder(
                 env_name=self.env_name,
                 num_heads=num_heads,
@@ -91,7 +91,7 @@ class AutoregressivePolicy(nn.Module):
             self.encoder = encoder
 
         if decoder is None:
-            log.info("Initializing default AutoregressiveDecoder")
+            # log.info("Initializing default AutoregressiveDecoder")
             self.decoder = AutoregressiveDecoder(
                 env_name=self.env_name,
                 embedding_dim=embedding_dim,
