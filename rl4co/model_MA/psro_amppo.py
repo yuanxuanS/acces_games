@@ -173,7 +173,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
             We also send to the loggers all hyperparams that are not `nn.Module` (i.e. the policy).
             Apparently PyTorch Lightning does not do this by default.
         """
-        log.info("Setting up batch sizes for train/val/test")
+        # log.info("Setting up batch sizes for train/val/test")
         train_bs, val_bs, test_bs = (
             self.data_cfg["batch_size"],
             self.data_cfg["val_batch_size"],
@@ -183,7 +183,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         self.val_batch_size = train_bs if val_bs is None else val_bs
         self.test_batch_size = self.val_batch_size if test_bs is None else test_bs
 
-        log.info("Setting up datasets")
+        # log.info("Setting up datasets")
 
         # Create datasets automatically. If found, this will skip
         if self.data_cfg["generate_data"]:
@@ -291,7 +291,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         if kwargs.get("env", None) is None:
             env = self.env
         else:
-            log.info("Using env from kwargs")
+            # log.info("Using env from kwargs")
             env = kwargs.pop("env")
             
         if with_adv:    # adv disturb env
@@ -393,7 +393,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         """
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
         self.train_dataset = self.wrap_dataset(train_dataset)
-        log.info("end of an epoch")
+        # log.info("end of an epoch")
         print(f"end of an epoch, time {time.time()}")
         
         sche_prog, sche_adv = self.lr_schedulers()

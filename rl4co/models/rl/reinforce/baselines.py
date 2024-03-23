@@ -128,7 +128,8 @@ class WarmupBaseline(REINFORCEBaseline):
         self.baseline.epoch_callback(*args, **kw)
         self.alpha = (kw["epoch"] + 1) / float(self.n_epochs)
         if kw["epoch"] < self.n_epochs:
-            log.info("Set warmup alpha = {}".format(self.alpha))
+            # log.info("Set warmup alpha = {}".format(self.alpha))
+            pass
 
 
 class CriticBaseline(REINFORCEBaseline):
@@ -144,7 +145,7 @@ class CriticBaseline(REINFORCEBaseline):
 
     def setup(self, model, env, **kwargs):
         if self.critic is None:
-            log.info("Creating critic network for {}".format(env.name))
+            # log.info("Creating critic network for {}".format(env.name))
             self.critic = CriticNetwork(env.name, **kwargs)
 
     def eval(self, x, c, env=None):
@@ -173,10 +174,10 @@ class RolloutBaseline(REINFORCEBaseline):
         """Update model and rollout baseline values"""
         self.model = copy.deepcopy(model).to(device)
         if dataset is None:
-            log.info("Creating evaluation dataset for rollout baseline")
+            # log.info("Creating evaluation dataset for rollout baseline")
             self.dataset = env.dataset(batch_size=[dataset_size])
 
-        log.info("Evaluating baseline model on evaluation dataset")
+        # log.info("Evaluating baseline model on evaluation dataset")
         self.bl_vals = (
             self.rollout(self.model, env, batch_size, device, self.dataset).cpu().numpy()
         )
@@ -197,24 +198,24 @@ class RolloutBaseline(REINFORCEBaseline):
         self, model, env, batch_size=64, device="cpu", epoch=None, dataset_size=None
     ):
         """Challenges the current baseline with the model and replaces the baseline model if it is improved"""
-        log.info("Evaluating candidate model on evaluation dataset")
+        # log.info("Evaluating candidate model on evaluation dataset")
         candidate_vals = self.rollout(model, env, batch_size, device).cpu().numpy()
         candidate_mean = candidate_vals.mean()
 
-        log.info(
-            "Candidate mean: {:.3f}, Baseline mean: {:.3f}".format(
-                candidate_mean, self.mean
-            )
-        )
+        # log.info(
+        #     "Candidate mean: {:.3f}, Baseline mean: {:.3f}".format(
+        #         candidate_mean, self.mean
+        #     )
+        # )
         if candidate_mean - self.mean > 0:
             # Calc p value with inverse logic (costs)
             t, p = ttest_rel(-candidate_vals, -self.bl_vals)
 
             p_val = p / 2  # one-sided
             assert t < 0, "T-statistic should be negative"
-            log.info("p-value: {:.3f}".format(p_val))
+            # log.info("p-value: {:.3f}".format(p_val))
             if p_val < self.bl_alpha:
-                log.info("Updating baseline")
+                # log.info("Updating baseline")
                 self._update_model(model, env, batch_size, device, dataset_size)
 
     def rollout(self, model, env, batch_size=64, device="cpu", dataset=None):
