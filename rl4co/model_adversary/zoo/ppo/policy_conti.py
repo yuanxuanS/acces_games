@@ -80,7 +80,7 @@ class PPOContiAdvPolicy(nn.Module):
         self.env_name = env_name
 
         if encoder is None:
-            log.info("Initializing default GraphAttentionEncoder")
+            # log.info("Initializing default GraphAttentionEncoder")
             self.encoder = GraphAttentionEncoder(
                 env_name=self.env_name,
                 num_heads=num_heads,
