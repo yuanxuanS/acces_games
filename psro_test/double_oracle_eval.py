@@ -32,6 +32,8 @@ class DoubleOracleEval:
         self.rarl_prog_policy = None
         self.rarl_adver_policy = None
         self.rarl_adver_critic = None
+        self.rarl_prog_strategy = []
+        self.rarl_adver_strategy = []
         # rarl直接load model不是policy: load rarl的model后也存policy，方便和psro的进行play game 
         self.whole_prog_policies = []
         self.whole_adver_policies = []
@@ -45,8 +47,8 @@ class DoubleOracleEval:
             return
         data = np.load(payoff_pth+ 'info.npz')  
         self.psro_payoff = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
-        self.psro_adver_strategy = data['adver_strategy']
-        self.psro_prog_strategy = data['prog_strategy']
+        self.psro_adver_strategy = list(data['adver_strategy'])
+        self.psro_prog_strategy = list(data['prog_strategy'])
 
         self.psro_val_data = str(data['val_data'])  # npz加载为np array数据类型
 
@@ -128,9 +130,9 @@ class DoubleOracleEval:
 
         ## 更新payoff
         self.whole_payoff = [list(row.copy()) for row in self.psro_payoff]
-        # 补全rarl的payoff
-        self.whole_payoff = self.update_payoff(self.whole_payoff, self.rarl_range, self.psro_range)
-        self.whole_payoff = self.update_payoff(self.whole_payoff, list(range(len(self.whole_prog_policies))), self.rarl_range)
+        # 补全rarl的payoff: 先新更新列
+        self.whole_payoff = self.update_payoff(self.whole_payoff, self.psro_range, self.rarl_range)
+        self.whole_payoff = self.update_payoff(self.whole_payoff, self.rarl_range, list(range(len(self.whole_adver_policies))))
         print("final payoff:", self.whole_payoff)
         return self.whole_payoff
 
@@ -167,13 +169,24 @@ class DoubleOracleEval:
                 payoff = DoubleOracleEval.play_game(self.env, td_init, protagonist_model, adversary_model)
                 if r > orig_r - 1:
                     new_row_payoff.append(payoff)
-                if c > orig_c -1 and r < orig_r -1:     # row新增行，包括c新增的一列
+                if c > orig_c -1 and r <= orig_r -1:     # row新增行，包括c新增的一列
                     payoff_prot[r].append(payoff)
 
             if r > orig_r - 1:
                 payoff_prot.append(new_row_payoff)
         return payoff_prot
     
+    def update_whole_strategy(self):
+        assert self.rarl_prog_policy, "no rarl policy!"
+        assert len(self.psro_prog_strategy) == len(self.psro_prog_policies), "psro policy != psro strategy dims"
+        self.psro_prog_strategy.append(0.)
+        self.psro_adver_strategy.append(0.)
+        #  rarl的strategy
+        self.rarl_prog_strategy = [0. for _ in range(len(self.psro_prog_policies))]
+        self.rarl_prog_strategy.append(1.)
+        self.rarl_adver_strategy = [0. for _ in range(len(self.psro_adver_policies))]
+        self.rarl_adver_strategy.append(1.)
+
     @staticmethod
     def play_game(env, td_init, prog, adver):
         '''
@@ -193,6 +206,28 @@ class DoubleOracleEval:
         reward = mean_reward
         return reward
     
+    def eval(self, prog_algor="psro", adver_algor="rarl"):
+        '''
+        用包括了psro和rarl的whole payoff/utility表 进行eval
+        '''
+        import nashpy as nash
+        assert len(self.whole_payoff) == len(self.whole_payoff[0]), "payoff table must be square"
+        assert len(self.whole_payoff) == len(self.psro_range) + len(self.rarl_range), "the size of payoff table must equal to number of 'psro+rarl' policies"
+        A = np.array(self.whole_payoff)
+        rps = nash.Game(A)
+
+        if prog_algor == "psro":
+            if adver_algor == "psro":
+                results = rps[self.psro_prog_strategy, self.psro_adver_strategy]
+            elif adver_algor == "rarl":
+                results = rps[self.psro_prog_strategy, self.rarl_adver_strategy]
+        elif prog_algor == "rarl":
+            if adver_algor == "psro":
+                results = rps[self.rarl_prog_strategy, self.psro_adver_strategy]
+            elif adver_algor == "rarl":
+                results = rps[self.rarl_prog_strategy, self.rarl_adver_strategy]
+
+        print(f"final results of {prog_algor}-prog vs {adver_algor}-adver is {results}")
 
 
 env = SVRPEnv(num_loc=20)
@@ -208,4 +243,8 @@ rarl_pth = "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-03-12_
 doEval.load_rarl_prog(rarl_pth, rarl_pth)     # 加载rarl
 
 doEval.get_whole_payoff()       # 补全最后的payoffs
-
+doEval.update_whole_strategy()
+doEval.eval("psro", "psro")
+doEval.eval("psro", "rarl")
+doEval.eval("rarl", "rarl")
+doEval.eval("rarl", "psro")
