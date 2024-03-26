@@ -77,6 +77,10 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         adversary: Union[str, LightningModule] = None,
         fix_protagonist: bool = True,
         fix_adversary: bool = False,
+        prog_polices: list = [],
+        adver_polices_and_critics: list = [],       # [[policies], [critics]]
+        prog_strategy: list = [],
+        adver_strategy: list = [],
         batch_size: int = 512,
         val_batch_size: int = None,
         test_batch_size: int = None,
@@ -114,12 +118,16 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         assert protagonist, "must give protagonist in psro!" 
         self.protagonist = protagonist
         self.protagonist.automatic_optimization = False
+        self.prog_polices = prog_polices
+        self.prog_strategy = prog_strategy
         
         # if isinstance(adversary, str):
         #     adversary = get_adversary(adversary)
         assert adversary, "must give adversary in psro!" 
         self.adversary = adversary
-        
+        self.adver_polices, self.adver_critics = adver_polices_and_critics
+        self.adver_strategy = adver_strategy
+
         assert fix_adversary ^ fix_protagonist, "must fix only one agent!"
         self.fix_adversary = fix_adversary
         self.fix_protagonist = fix_protagonist
@@ -283,7 +291,11 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         # print("this metrics", metrics)
         key = "val/reward"
         if phase == "val" and key in metrics:
-            self.last_val_reward = metrics[key]
+            if not self.last_val_reward:
+                self.last_val_reward = metrics[key]
+            else:
+                self.last_val_reward = metrics[key]
+                # self.last_val_reward = (metrics[key] + self.last_val_reward) / 2
         return metrics
 
     def forward(self, td, with_adv, phase, **kwargs):
@@ -308,9 +320,44 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         else:
             res = self.protagonist(td, **kwargs)
         return res
+    
+    @staticmethod
+    def sample_strategy(distrib):
+        import random
+        strategy_is = random.choices(list(range(len(distrib))), weights=distrib)
+        print("in func", strategy_is)
+        strategy_i = strategy_is[0]
+        return strategy_i
+
+
+    def update_adversary(self):
+        '''
+        固定adver时，采样adver。adversary的model的policy critic更新
+        只选取现有的adver policy，不用复制
+        note: 区别在于不进行复制
+        
+        '''
+        sample_i = PSRO_AM_PPO.sample_strategy(self.adver_strategy)
+        sampled_policy, sampled_critic = self.adver_polices[sample_i], self.adver_critics[sample_i]
+        print(f"--- sample afversary policy: {sample_i}")
+        self.adversary.policy = sampled_policy
+        self.adversary.critic = sampled_critic
+
+    def update_protagonist(self):
+        '''
+        固定prog时，采样prog。
+        只选取现有的prog policy，不用复制
+        prog的model的policy更新
+        '''
+        sample_i = PSRO_AM_PPO.sample_strategy(self.prog_strategy)
+        sampled_policy = self.prog_polices[sample_i]
+        print(f"--- sample prog policy: {sample_i}")
+        self.protagonist.policy = sampled_policy
+        
 
     def shared_step(self, batch: Any, batch_idx: int, phase: str, **kwargs):
         """Shared step between train/val/test. To be implemented in subclass"""
+        
         # phase = "train"
         optim_prog, optim_adv = self.optimizers()
         # adv forward: change hyparams, env stochvar transition
@@ -376,6 +423,13 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
     def test_dataloader(self):
         return self._dataloader(self.test_dataset, self.test_batch_size)
 
+    def on_train_epoch_start(self):
+        if self.fix_adversary:
+            self.update_adversary() # adver策略：采样不同的adver policy
+        elif self.fix_protagonist:
+            self.update_protagonist()
+
+        
     def on_train_epoch_end(self):
         """Callback for end of training epoch: we evaluate the baseline"""
         if not self.fix_protagonist:
@@ -394,7 +448,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
         self.train_dataset = self.wrap_dataset(train_dataset)
         # log.info("end of an epoch")
-        print(f"end of an epoch, time {time.time()}")
+        # print(f"end of an epoch, time {time.time()}")
         
         sche_prog, sche_adv = self.lr_schedulers()
         if isinstance(sche_prog, torch.optim.lr_scheduler.MultiStepLR):
