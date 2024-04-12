@@ -15,6 +15,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": TSPContext,
+        "opswtw": OPSWTWContext,
         "atsp": TSPContext,
         "csp": TSPContext,
         "scp": SCPContext,
@@ -70,7 +71,32 @@ class EnvContext(nn.Module):
         context_embedding = torch.cat([cur_node_embedding, state_embedding], -1)
         return self.project_context(context_embedding)
 
+class OPSWTWContext(EnvContext):
+    """Context embedding for the opswtw.
+    Project the following to the embedding space:
+        - first node embedding: depot
+        - current node embedding
+        - current time
+    """
 
+    def __init__(self, embedding_dim):
+        super(OPSWTWContext, self).__init__(embedding_dim, 2 * embedding_dim + 1)
+        # self.W_placeholder = nn.Parameter(
+        #     torch.Tensor(2 * self.embedding_dim).uniform_(-1, 1)
+        # )
+
+    def _cur_tourtime_embedding(self, embeddings, td):
+        """Get embedding of current tour time"""
+        return td["tour_time"]
+    def forward(self, embeddings, td):
+        batch_size = [td.batch_size[0]]
+        depot_idx = torch.ones((*batch_size, ), dtype=torch.int64).to(embeddings.device)
+        depot_embedding = gather_by_index(embeddings, depot_idx)
+        cur_node_embedding = self._cur_node_embedding(embeddings, td)
+        tourtime_embedding = self._cur_tourtime_embedding(embeddings, td)
+        context_embedding = torch.cat([depot_embedding, cur_node_embedding, tourtime_embedding[..., None]], -1)
+        return self.project_context(context_embedding)
+    
 class TSPContext(EnvContext):
     """Context embedding for the Traveling Salesman Problem (TSP).
     Project the following to the embedding space:
