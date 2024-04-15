@@ -161,7 +161,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 policy_lst.append(evaluate_model.policy)
                 save_fname = cfg.get("evaluate_loc") + "/evalu_"+withadv+"_rarlprog_"+method+change_data_model+".npz"
                 save_fname_lst.append(save_fname)
-                save_pt = './graphs/graph_'+withadv+"_rarlprog_"+change_data_model+".png"
+                save_pt = './graphs/graph_of_'+str(env.name)+withadv+"_rarlprog_"+change_data_model+".png"
                 save_pt_lst.append(save_pt)
                 # evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=save_fname, 
                 #              save_pt = save_pt)
@@ -173,7 +173,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 policy_lst.append(evaluate_model_tmp.policy)
                 save_fname_tmp = cfg.get("evaluate_loc") + "/evalu_"+withadv+"_rlprog_"+method+change_data_model+".npz"
                 save_fname_lst.append(save_fname_tmp)
-                save_pt_tmp = './graphs/graph_'+withadv+"_rlprog_"+change_data_model+".png"
+                save_pt_tmp = './graphs/graph_of_'+str(env.name)+withadv+"_rlprog_"+change_data_model+".png"
                 save_pt_lst.append(save_pt_tmp)
                 # evaluate_rarl_policy(env, evaluate_model_tmp.policy, adv, dataset, method, save_results=True, save_fname=save_fname, 
                 #              save_pt = './graphs/graph_'+withadv+"_rlprog_"+change_data_model+".png")
@@ -189,7 +189,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         
         
             evaluate_rarl_policy(env, evaluate_model.policy, adv, dataset, method, save_results=True, save_fname=[save_fname], 
-                                save_pt = ['./graphs/graph_'+withadv+"_rarlprog_"+change_data_model+".png"])
+                                save_pt = ['./graphs/graph_of_'+str(env.name)+withadv+"_rarlprog_"+change_data_model+".png"])
 
     return metric_dict, object_dict
 

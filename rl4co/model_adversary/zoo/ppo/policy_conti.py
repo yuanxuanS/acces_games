@@ -60,7 +60,7 @@ class PPOContiAdvPolicy(nn.Module):
         num_encoder_layers: int = 3,
         num_heads: int = 8,
         hidden_dim: int = 512,
-        out_dim: int = 18,       # 2 alpha (9params)
+        action_dim: int = 9,       # 2 alpha (9params)
         normalization: str = "batch",
         mask_inner: bool = True,
         use_graph_context: bool = True,
@@ -93,8 +93,9 @@ class PPOContiAdvPolicy(nn.Module):
         else:
             self.encoder = encoder
 
+        self.action_dim = action_dim
         self.conti_action_head = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 18)
+            nn.Linear(embedding_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, self.action_dim * 2)
         )
         
         self.policy_dis = policy_dis
@@ -132,8 +133,8 @@ class PPOContiAdvPolicy(nn.Module):
         
         
         if self.policy_dis == "Beta":
-            alpha = F.softplus(actions[..., :9]) + 1.
-            beta = F.softplus(actions[..., 9:]) + 1.       # alpha and beta need to be larger than 1
+            alpha = F.softplus(actions[..., :self.action_dim]) + 1.
+            beta = F.softplus(actions[..., self.action_dim:]) + 1.       # alpha and beta need to be larger than 1
             action_dist = torch.distributions.beta.Beta(alpha, beta)      # alpha, beta
             action_ = action_dist.sample()      # [batch, num_loc, 9]
             log_prob_ = action_dist.log_prob(action_)
