@@ -29,6 +29,7 @@ class EvalRarlBase:
         check_unused_kwargs(self, kwargs)
         self.env = env
         self.progress = progress
+        self.stochtime_env = {"opsptw": "real_node_prize"}
 
     def __call__(self, policy, dataloader, adv, save_pt, **kwargs):
         """Evaluate the policy on the given dataloader with **kwargs parameter
@@ -43,6 +44,8 @@ class EvalRarlBase:
         start_event.record()
 
         with torch.no_grad():
+            if self.env.name in self.stochtime_env:
+                stoch_var_dict = {}
             rewards_list = [[] for _ in range(len(policy))]
             actions_list = [[] for _ in range(len(policy))]
             td_all = []
@@ -56,11 +59,17 @@ class EvalRarlBase:
                    out_adv = adv(td.clone())
                    
                    
-                   td = self.env.reset_stochastic_demand(td, out_adv["action_adv"][..., None])
+                   td = self.env.reset_stochastic_var(td, out_adv["action_adv"][..., None])
                    
                 
                 for i in range(len(policy)):
-                    actions, rewards = self._inner(policy[i], td, **kwargs)
+                    actions, rewards, td_after = self._inner(policy[i], td, **kwargs)
+                    if self.env.name in self.stochtime_env:    # 在随机变量的值和时间有关： 每个policy一个值，所以需要每个policy的都存起来
+                        stoch_var_key = self.stochtime_env[self.env.name]
+                        if i not in stoch_var_dict.keys():
+                            stoch_var_dict[i] = td_after[stoch_var_key]
+                        else:
+                            stoch_var_dict[i] = torch.concat((stoch_var_dict[i], td_after[stoch_var_key]), 0)
                     rewards_list[i].append(rewards)
                     actions_list[i].append(actions)
                 # 记录下所有的td数据以供后面画图使用
@@ -101,7 +110,10 @@ class EvalRarlBase:
         for i in range(len(policy)):
             # tmp_actions = actions_list[i].reshape(td.batch_size[0], -1).cpu()  
             tmp_actions = actions_list[i]
-            self.env.render(td.cpu().clone(), tmp_actions, save_pt=save_pt[i])
+            if self.env.name in self.stochtime_env:
+                stoch_var_key = self.stochtime_env[self.env.name]
+                td_all[stoch_var_key] = stoch_var_dict[i]
+            self.env.render(td_all.cpu().clone(), tmp_actions, save_pt=save_pt[i])
             
             tmp_dict = {
                 "actions": actions_list[i][:save_size].cpu(),
@@ -120,7 +132,8 @@ class EvalRarlBase:
         raise NotImplementedError("Implement in subclass")
 
     def _get_rewards(self, td, out):
-        if self.env.name == "scp":      # in scp, reward in recorded in every step
+        reward_step_env = ["scp", "opsptw"]
+        if self.env.name in reward_step_env:      # in scp, reward in recorded in every step
             return out["reward"]
         else:
             return self.env.get_reward(td, out["actions"])
@@ -134,15 +147,19 @@ class GreedyEval(EvalRarlBase):
         super().__init__(env, kwargs.get("progress", True))
 
     def _inner(self, policy, td):
+        '''
+        在opspsw中，随机变量real_ndoe_prize受时间影响，因此需要agent更新后的td
+        '''
+        td_tmp = td.clone()
         out = policy(
-            td.clone(),
+            td_tmp,
             decode_type="greedy",
             num_starts=0,
             return_actions=True,
         )
        
-        rewards = self._get_rewards(td, out)
-        return out["actions"], rewards
+        rewards = self._get_rewards(td_tmp, out)
+        return out["actions"], rewards, td_tmp
 
 
 class AugmentationEval(EvalRarlBase):

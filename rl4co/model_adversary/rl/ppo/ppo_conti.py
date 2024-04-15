@@ -136,10 +136,10 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         # with torch.no_grad():
         td = self.env.reset(batch)  # note: clone needed for dataloader
         out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
-        td = self.env.reset_stochastic_demand(td, out["action_adv"][..., None])    # env transition: get new real demand
+        td = self.env.reset_stochastic_var(td, out["action_adv"][..., None])    # env transition: get new real demand
         if self.opponent:       # get reward from current run of opponent
             assert td.get("reward", default=None) == None   # if get reward currently from oppo, must no reward in td now  
-            oppo_reward = self.opponent(td).forward()
+            oppo_reward = self.opponent(td.clone()).forward()
             td["reward"] = oppo_reward["rewards"]
             out["reward"] = td["reward"]
         return td, out
@@ -242,7 +242,7 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
     def shared_step(
         self, batch: Any, batch_idx: int, phase: str, dataloader_idx: int = None
     ):
-        td, out = self.inference_step(batch, batch_idx, phase)
+        td, out = self.inference_step(batch, batch_idx, phase)  # out: dict, "adver_action"
             
         out = self.update_step(td, out, phase, dataloader_idx)
         metrics = self.log_metrics(out, phase, dataloader_idx=dataloader_idx)
