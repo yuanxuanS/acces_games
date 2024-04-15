@@ -81,6 +81,8 @@ class OPSPTWEnv(RL4COEnvBase):
         Normalize data
         opswtw data: test and val data are the same 
         """
+        if not batch_size:
+            batch_size = 10000
         if isinstance(batch_size, list):
             batch_size = batch_size[0]
         td_load = load_npz_to_tensordict(fpath)[:batch_size, ...]
@@ -297,7 +299,7 @@ class OPSPTWEnv(RL4COEnvBase):
         adver_action: batch ,9
         '''
         assert adver_action.ndim == 3, "adver action dim wrong"
-        stoch_gamma = td["prize"] * adver_action.mean(1)
+        stoch_gamma = 2*td["prize"] * adver_action.mean(1)      # uniform(0,1)，为了实现0.5均值，乘2
         td.set("stoch_gamma", stoch_gamma)
         return td
 
