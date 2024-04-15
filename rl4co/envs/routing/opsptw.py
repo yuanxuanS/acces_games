@@ -101,9 +101,20 @@ class OPSPTWEnv(RL4COEnvBase):
             torch.FloatTensor(batch_size, self.num_loc)
             .uniform_(0, 1)
         ).to(self.device)
+        # td_load.set("stoch_gamma", stoch_gamma)
 
-        td_load.set("stoch_gamma", stoch_gamma)
+        # weather
+        weather = (
+            torch.FloatTensor(batch_size, 3)
+            .uniform_(-1, 1)
+        ).to(self.device)
+        td_load.set("weather", weather)
         
+        stochastic_prize = self.get_stoch_var(prize.to("cpu"), 
+                                              locs.to("cpu").clone(),
+                                              weather[:, None,:].repeat(1, self.num_loc,1).to("cpu"),
+                                              None).squeeze(-1).float().to(self.device)
+        td_load.set("stochastic_prize", stochastic_prize)
         return td_load
     
     def generate_data(self, batch_size) -> TensorDict:
@@ -123,20 +134,80 @@ class OPSPTWEnv(RL4COEnvBase):
         tw_high = x_dict["tw_high"][:batch_size, ...]
         prize = x_dict["prize"][:batch_size, ...]       # has been normalized
         maxtime = x_dict["maxtime"][:batch_size, ...]
-        stoch_gamma = x_dict["stoch_gamma"][:batch_size, ...]
+        # stoch_gamma = x_dict["stoch_gamma"][:batch_size, ...]
+        weather = x_dict["weather"][:batch_size, ...]
+        stoch_prize = x_dict["stochastic_prize"][:batch_size, ...]
         return TensorDict(
             {
             "locs": locs,
             "tw_low": tw_low,
             "tw_high": tw_high,
             "prize": prize,
-            "stoch_gamma": stoch_gamma,
+            "stochastic_prize": stoch_prize,
+            # "stoch_gamma": stoch_gamma,
+            "weather": weather,
             "maxtime": maxtime,
         },
         batch_size=batch_size,
         device=self.device
         )
     
+    
+    @staticmethod
+    # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
+    def get_stoch_var(inp, locs, w, alphas=None, A=0.6, B=0.2, G=0.2):
+        '''
+        locs: [batch, num_customers, 2]
+        '''
+        # h = hpy().heap()
+        if inp.dim() <= 2:
+            inp_ =  inp[..., None]
+        else:
+            inp_ = inp.clone()
+
+        n_problems,n_nodes,shape = inp_.shape
+        T = inp_/A
+
+        # var_noise = T*G
+        # noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        # noise = var_noise*noise     # multivariable normal distr, var_noise mean
+        # noise = torch.clamp(noise, min=-var_noise)
+        
+        var_noise = T*G
+
+        noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        noise = torch.clamp(noise, min=-var_noise, max=var_noise)
+
+        var_w = torch.sqrt(T*B)
+        # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
+        sum_alpha = var_w[:, :, None, :]*9      #? 4.5
+        
+        if alphas is None:  
+            alphas = torch.rand((n_problems, 1, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        alphas_loc = locs.sum(-1)[..., None, None]/2 * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
+            # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        # alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
+        alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
+        alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
+        signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
+        # signs = torch.where(signs > 0.5)
+        alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        
+        w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
+        # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
+        w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
+        
+        tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+        tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        
+        # del tot_w, noise
+        del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
+        del T, noise, var_w
+        del inp_
+        # gc.collect()
+        
+        return out
     
     
     @staticmethod
@@ -182,9 +253,11 @@ class OPSPTWEnv(RL4COEnvBase):
                 "tw_low": td["tw_low"],
                 "tw_high": td["tw_high"],
                 "prize": td["prize"],
-                "real_node_prize": td["prize"].clone(),     # change with arrived time.
+                # "real_node_prize": td["prize"].clone(),     # change with arrived time.
                 "curr_prize": curr_prize,
-                "stoch_gamma": td["stoch_gamma"],
+                # "stoch_gamma": td["stoch_gamma"],
+                "stochastic_prize": td["stochastic_prize"],
+                "weather": td["weather"],
                 "maxtime": td["maxtime"],
                 "tour_time": curr_time,
                 "adj": adj,
@@ -239,10 +312,11 @@ class OPSPTWEnv(RL4COEnvBase):
         # add prize
         curr_prize = td["curr_prize"]
         # real prize: prize * (3*stoch_gamma^tour_time)
-        stoch_gamma = td["stoch_gamma"][range(batch_size), current_node]
-        real_prize = td["prize"][range(batch_size), current_node] * (stoch_gamma ** td["tour_time"]) * 3
-        real_node_prize = td["real_node_prize"]
-        real_node_prize[range(batch_size), current_node] = real_prize.clone()
+        # stoch_gamma = td["stoch_gamma"][range(batch_size), current_node]
+        # real_prize = td["prize"][range(batch_size), current_node] * (stoch_gamma ** td["tour_time"]) * 3
+        # real_node_prize = td["real_node_prize"]
+        # real_node_prize[range(batch_size), current_node] = real_prize.clone()
+        real_prize = td["stochastic_prize"][range(batch_size), current_node]
         curr_prize += real_prize
 
 
@@ -253,7 +327,7 @@ class OPSPTWEnv(RL4COEnvBase):
                 "visited": visited,
                 "tour_time": tour_time,
                 "penalty": penalty,
-                "real_node_prize": real_node_prize,
+                # "real_node_prize": real_node_prize,
                 "curr_prize": curr_prize,
                 "done": done,
 
@@ -302,9 +376,24 @@ class OPSPTWEnv(RL4COEnvBase):
         stoch_gamma = 2*td["prize"] * adver_action.mean(1)      # uniform(0,1)，为了实现0.5均值，乘2
         td.set("stoch_gamma", stoch_gamma)
         return td
+    
+    def reset_stochastic_prize(self, td, adver_action):
+        '''
+        adver_action: batch ,9
+        '''
+        batch_size = td["prize"].size(0)
+        locs_cust = td["locs"].clone()
+        stochastic_prize = self.get_stoch_var(td["prize"].to("cpu"),
+                                                locs_cust.to("cpu"), 
+                                                td["weather"][:, None, :].
+                                                repeat(1, self.num_loc, 1).to("cpu"),
+                                                adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(self.device)
 
+        td.set("stochastic_prize", stochastic_prize)
+        return td
+    
     def reset_stochastic_var(self, td, adver_out):
-        td = self.reset_stochastic_gamma(td, adver_out)
+        td = self.reset_stochastic_prize(td, adver_out)
         return td
 
     @staticmethod
