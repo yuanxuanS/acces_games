@@ -77,6 +77,7 @@ class SVRPEnv(CVRPEnv):
         if SVRPEnv.name == "svrp_fix":
             return self.load_fixed_data(fpath, batch_size)
         td_load = load_npz_to_tensordict(fpath)
+        assert td_load["demand"].max() > 1, "this data range is not larger than [0, 1]"
         td_load.set("demand", td_load["demand"] / td_load["capacity"][:, None])
         td_load.set("stochastic_demand", td_load["stochastic_demand"] / td_load["capacity"][:, None])
         return td_load
@@ -401,6 +402,11 @@ class SVRPEnv(CVRPEnv):
         td.set("real_demand", stochastic_demand)
         
         return td
+    
+    def reset_stochastic_var(self, td, adver_out):
+        td = self.reset_stochastic_demand(td, adver_out)
+        return td
+    
     def _step(self, td: TensorDict) -> TensorDict:
         current_node = td["action"][:, None]  # Add dimension for step
         n_loc = td["demand"].size(-1)  # Excludes depot
@@ -517,6 +523,10 @@ class SVRPEnv(CVRPEnv):
                 
     @staticmethod
     def render(td: TensorDict, actions=None, ax=None, **kwargs):
+        ''''
+        绘制出action: agent选择的路径
+        demand. 变化前后的
+        '''
         import matplotlib.pyplot as plt
         import numpy as np
 

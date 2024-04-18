@@ -47,6 +47,8 @@ class DoubleOracleEval:
             return
         data = np.load(payoff_pth+ 'info.npz')  
         self.psro_payoff = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
+        # print(self.psro_payoff)
+        self.psro_payoff = [[round(number, 2) for number in lst] for lst in self.psro_payoff]
         self.psro_adver_strategy = list(data['adver_strategy'])
         self.psro_prog_strategy = list(data['prog_strategy'])
 
@@ -132,8 +134,9 @@ class DoubleOracleEval:
         self.whole_payoff = [list(row.copy()) for row in self.psro_payoff]
         # 补全rarl的payoff: 先新更新列
         self.whole_payoff = self.update_payoff(self.whole_payoff, self.psro_range, self.rarl_range)
+        print("final payoff:\n", self.whole_payoff)
         self.whole_payoff = self.update_payoff(self.whole_payoff, self.rarl_range, list(range(len(self.whole_adver_policies))))
-        print("final payoff:", self.whole_payoff)
+        print("final payoff:\n", self.whole_payoff)
         return self.whole_payoff
 
     
@@ -153,7 +156,7 @@ class DoubleOracleEval:
         protagonist_model = self.prog_model(self.env)
         adversary_model = self.adver_model(self.env, opponent=protagonist_model)
         
-        orig_r = len(payoff_prot)
+        orig_r = len(payoff_prot)       # 仅psro的
         orig_c = len(payoff_prot[0])
 
         
@@ -167,6 +170,7 @@ class DoubleOracleEval:
                 
                 td_init = self.env.reset(val_data.clone()).to(device)        # 
                 payoff = DoubleOracleEval.play_game(self.env, td_init, protagonist_model, adversary_model)
+                payoff = round(payoff, 2)
                 if r > orig_r - 1:
                     new_row_payoff.append(payoff)
                 if c > orig_c -1 and r <= orig_r -1:     # row新增行，包括c新增的一列
@@ -216,26 +220,32 @@ class DoubleOracleEval:
         A = np.array(self.whole_payoff)
         rps = nash.Game(A)
 
+        prog_s = None
+        adver_s = None
         if prog_algor == "psro":
+            prog_s = self.psro_prog_strategy
             if adver_algor == "psro":
-                results = rps[self.psro_prog_strategy, self.psro_adver_strategy]
+                adver_s = self.psro_adver_strategy
             elif adver_algor == "rarl":
-                results = rps[self.psro_prog_strategy, self.rarl_adver_strategy]
+                adver_s = self.rarl_adver_strategy
         elif prog_algor == "rarl":
+            prog_s = self.rarl_prog_strategy
             if adver_algor == "psro":
-                results = rps[self.rarl_prog_strategy, self.psro_adver_strategy]
+                adver_s = self.psro_adver_strategy
             elif adver_algor == "rarl":
-                results = rps[self.rarl_prog_strategy, self.rarl_adver_strategy]
+                adver_s = self.rarl_adver_strategy
+        print(f"prog str is {prog_s}\n adver str is {adver_s}")
+        results = rps[prog_s, adver_s]
 
-        print(f"final results of {prog_algor}-prog vs {adver_algor}-adver is {results}")
+        print(f"final results of {prog_algor}-prog vs {adver_algor}-adver is {results}\n\n")
 
 
 env = SVRPEnv(num_loc=20)
 doEval = DoubleOracleEval(env, prog_model=AttentionModel, prog_policy=AttentionModelPolicy,
                           adver_model=PPOContiAdvModel, adver_policy=PPOContiAdvPolicy, adver_critic=CriticNetwork)
-psro_payoff_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-26_14-10-29/psro/"
-psro_prog_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-26_14-10-29/models_weights"
-psro_adver_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-26_14-10-29/models_weights"
+psro_payoff_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-28_12-10-02/psro/"
+psro_prog_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-28_12-10-02/models_weights"
+psro_adver_dir = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-03-28_12-10-02/models_weights"
 doEval.load_psro_results(psro_payoff_dir=psro_payoff_dir,
                          psro_prog_dir=psro_prog_dir,
                          psro_adver_dir=psro_adver_dir)      # 加载psro
@@ -244,6 +254,7 @@ doEval.load_rarl_prog(rarl_pth, rarl_pth)     # 加载rarl
 
 doEval.get_whole_payoff()       # 补全最后的payoffs
 doEval.update_whole_strategy()
+
 doEval.eval("psro", "psro")
 doEval.eval("psro", "rarl")
 doEval.eval("rarl", "rarl")

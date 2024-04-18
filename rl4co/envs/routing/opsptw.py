@@ -191,7 +191,8 @@ class OPSPTWEnv(RL4COEnvBase):
         alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
         signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
         # signs = torch.where(signs > 0.5)
-        alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        alphas_loc[signs > 0.5] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        # alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
         w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
         # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
@@ -430,7 +431,8 @@ class OPSPTWEnv(RL4COEnvBase):
         
         locs = td["locs"]
         prize = td["prize"]
-        real_node_prize = td["real_node_prize"]
+        # real_node_prize = td["real_node_prize"]
+        real_prize = td["stochastic_prize"]
 
         # add the depot at the first action 
         actions = torch.cat([torch.tensor([0]), actions])
@@ -512,7 +514,7 @@ class OPSPTWEnv(RL4COEnvBase):
                 plt.Rectangle(
                     (locs[node_idx, 0] - 0.005, locs[node_idx, 1] + 0.015),
                     0.005,
-                    2*real_node_prize[node_idx]/10,      # ?
+                    2*real_prize[node_idx]/10,      # ?
                     edgecolor=cm.Set2(1),
                     facecolor=cm.Set2(1),
                     fill=True,
@@ -524,7 +526,7 @@ class OPSPTWEnv(RL4COEnvBase):
             ax.text(
                 locs[node_idx, 0] - 0.085+ move_x,
                 locs[node_idx, 1] - 0.025,
-                f"{real_node_prize[node_idx].item():.2f} |",
+                f"{real_prize[node_idx].item():.2f} |",
                 horizontalalignment="center",
                 verticalalignment="top",
                 fontsize=10,
