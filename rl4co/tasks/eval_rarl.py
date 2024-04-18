@@ -29,7 +29,7 @@ class EvalRarlBase:
         check_unused_kwargs(self, kwargs)
         self.env = env
         self.progress = progress
-        self.stochtime_env = {"opsptw": "real_node_prize"}
+        self.stochtime_env = {} #{"opsptw": "real_node_prize"}
 
     def __call__(self, policy, dataloader, adv, save_pt, **kwargs):
         """Evaluate the policy on the given dataloader with **kwargs parameter
