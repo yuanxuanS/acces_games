@@ -38,7 +38,7 @@ def play_game(env, td_init, prog, adver):
     adver_model = adver.to(device)
     
     out_adv = adver_model(td_init.clone(), phase="test", return_actions=True)
-    td = env.reset_stochastic_demand(td_init, out_adv["action_adv"][..., None])    # env transition: get new real demand
+    td = env.reset_stochastic_var(td_init, out_adv["action_adv"][..., None])    # env transition: get new real demand
     ret = prog_model(td)
     mean_reward = ret["reward"].mean().item()   # return scalar
     # print(mean_reward)
@@ -126,6 +126,7 @@ class Protagonist:
         self.model = model      # AttentionModel class
         self.policy = policy
         self.env = env
+        self.epochs = {"svrp":[30, 10, 10], "opsptw":[30, 10, 10]}
         self.policies = []
         self.correspond_baseline = []
         self.strategy = []
@@ -218,13 +219,13 @@ class Protagonist:
         '''
         print("===== in protagonist bs ====")
         
-        max_epoch = 1
-        # if epoch == 0:
-        #     max_epoch = 15
-        # elif epoch > 0 and epoch < 5:
-        #     max_epoch = 10
-        # else: 
-        #     max_epoch = 10
+        # max_epoch = 1
+        if epoch == 0:
+            max_epoch = 30 # 15
+        elif epoch > 0 and epoch < 5:
+            max_epoch = 20  # 10
+        else: 
+            max_epoch = 10
         
         # get protagonist's policy from strategy: adver用策略变化，prog更新policy
         cur_policy = self.get_curr_policy()     # sample a AttentionModel's policy
@@ -271,7 +272,7 @@ class Protagonist:
             else:
                 trainer.fit(model=psro_model, ckpt_path=cfg.get("ckpt_path"))
             # 取训练完的val reward（最后一次）
-            curr_reward = psro_model.last_val_reward.to("cpu")
+            curr_reward = psro_model.last_val_reward.to("cpu")      # val的batch_size改为10000， 只进行一次
             # print("wait")
 
         # 每次重新采样adver
@@ -426,7 +427,7 @@ class Adversary:
                                                             prog_strategy=protagonist.strategy,
                                                             adver_strategy=self.strategy)
 
-        max_epoch = 1
+        max_epoch = 3
         if cfg.get("train"):
             log.info(f"Instantiating trainer in adver bs ...")
             trainer: RL4COTrainer = hydra.utils.instantiate(
@@ -463,7 +464,7 @@ def run_psro(cfg: DictConfig):
     log.info("Instantiating loggers...")
     logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
 
-    epochs = 3
+    iterations = 40
     epsilon = 0.01      # prog, adver的bs差距阈值，小于判断为 均衡
     log.info(f"Instantiating environment <{cfg.env._target_}>")
     env = hydra.utils.instantiate(cfg.env)
@@ -514,22 +515,48 @@ def run_psro(cfg: DictConfig):
     row_payoff.append(payoff)
     payoff_prot.append(row_payoff)
 
+    # compute nashconv
+    utility_1 = payoff
+    utility_2 = -payoff
+    nashconv_lst = []
+
+    # tmp
+    prog_br_lst = []
+    adver_br_lst = []
+
+    # 
+    # 存payoff表，两agent的strategy
+    save_payoff_pth = logger[0].save_dir+'/psro/'
+    if not os.path.exists(save_payoff_pth):
+        os.mkdir(save_payoff_pth)
+
     print("init payoff:", payoff_prot)
     print(protagonist.policy_number)
-    epoch_reward = []
-    for e in range(epochs):
+    iter_reward = []
+    for e in range(iterations):
 
         log.info(f" psro training epoch {e}")
         bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger, epoch=e)
         protagonist.add_policy(bs_adversary)
+        utility_1_br = prog_bs_reward
+        prog_br_lst.append(prog_bs_reward)
 
         bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
         adversary.add_policy(bs_protagonist, bs_protagonist_critic)
-        
+        utility_2_br = -adver_bs_reward
+        adver_br_lst.append(adver_bs_reward)
+
         # 判断是否达到平衡
         if abs(prog_bs_reward - adver_bs_reward) < epsilon:
             print(f"get equalibium in {e} epoch !!! prog reward:{prog_bs_reward}, adver reward:{adver_bs_reward}")
-            break
+            # break
+        else:
+            print(f"curr prog reward: {prog_bs_reward}, curr adver reward:{adver_bs_reward} in epoch {e}")
+
+        # compute nashconv
+        nashconv = utility_1_br - utility_1 + utility_2_br - utility_2
+        nashconv_lst.append(nashconv)
+
         # 更新新加入policy的payoff矩阵
         row_range = [protagonist.policy_number - 1]
         col_range = range(adversary.policy_number)
@@ -552,8 +579,23 @@ def run_psro(cfg: DictConfig):
 
         # 测试现在的reward
         curr_reward = eval(payoff_prot, protagonist.strategy, adversary.strategy)
-        epoch_reward.append(curr_reward)
+        iter_reward.append(curr_reward)
         log.info(f"curr reward is {curr_reward}")
+
+        # update utility
+        utility_1 = curr_reward
+        utility_2 = -curr_reward
+
+        if e % 5 == 0:
+            np.savez(save_payoff_pth+ 'info.npz', 
+                payoffs=payoff_prot,       # key=value
+                iter_reward=iter_reward,
+                nashconv_lst=nashconv_lst,     # nashconv
+                prog_br_lst=prog_br_lst,
+                adver_br_lst=adver_br_lst,
+                val_data=val_data_pth,
+                adver_strategy=adversary.strategy,
+                prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
 
     protagonist.save_model_weights(logger[0].save_dir+"/models_weights/")   # logger是list
     adversary.save_model_weights(logger[0].save_dir+"/models_weights")
@@ -562,16 +604,8 @@ def run_psro(cfg: DictConfig):
     protagonist_tmp.load_model_weights(logger[0].save_dir+"/models_weights/")
     adversary_tmp = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
     adversary_tmp.load_model_weights(logger[0].save_dir+"/models_weights")
-    # 存payoff表，两agent的strategy
-    save_payoff_pth = logger[0].save_dir+'/psro/'
-    if not os.path.exists(save_payoff_pth):
-        os.mkdir(save_payoff_pth)
-    np.savez(save_payoff_pth+ 'info.npz', 
-             payoffs=payoff_prot,       # key=value
-             epoch_reward=epoch_reward,
-             val_data=val_data_pth,
-             adver_strategy=adversary.strategy,
-             prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
+    
+    
 
     data = np.load(save_payoff_pth+ 'info.npz')  # 加载
     payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
@@ -582,6 +616,6 @@ def run_psro(cfg: DictConfig):
     print("adver strategy: ", adversary.strategy)
     print("prog strategy: ", protagonist.strategy)
     print("final payoff", payoff_prot)
-    print("epoch reward", epoch_reward)
+    print("iteration reward", iter_reward)
 if __name__ == "__main__":
     run_psro()

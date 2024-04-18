@@ -10,3 +10,6 @@ from rl4co.envs.routing.spctsp import SPCTSPEnv
 from rl4co.envs.routing.tsp import TSPEnv
 from rl4co.envs.routing.csp import CSPEnv
 from rl4co.envs.routing.scp import SCPEnv
+from rl4co.envs.routing.opswtw import OPSWTWEnv
+from rl4co.envs.routing.opsptw import OPSPTWEnv
+from rl4co.envs.routing.opsa import OPSAEnv

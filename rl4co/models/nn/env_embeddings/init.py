@@ -15,6 +15,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPInitEmbedding,
         "opswtw": OPSWTWInitEmbedding,
         "opsptw": OPSPTWInitEmbedding,
+        "opsa": OPSAInitEmbedding,
         "csp": TSPInitEmbedding,
         "scp": SCPInitEmbedding,
         "atsp": TSPInitEmbedding,
@@ -105,6 +106,34 @@ class OPSPTWInitEmbedding(nn.Module):
         feature = torch.concat([td["locs"], prize, tw_low, tw_high, width,
                                  td["maxtime"][..., None],
                                  prize / width,
+                                 prize_dis_depot], dim=-1)
+        out = self.init_embed(feature)
+        return out
+
+class OPSAInitEmbedding(nn.Module):
+    """Initial embedding for the OPSA
+    Embed the following node features to the embedding space:
+        - locs: x, y coordinates of the cities
+        - prize:
+        - time window, low, high
+    """
+
+    def __init__(self, embedding_dim, linear_bias=True):
+        super(OPSAInitEmbedding, self).__init__()
+        node_dim = 10  # x, y, cost, attack_prob, tw_low, tw_high, width,  maxtime, prize/width, prize/todepot
+        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
+
+    def forward(self, td):
+        cost = td["cost"][..., None]
+        prob = td["attack_prob"][..., None]
+        tw_low = td["tw_low"][..., None]
+        tw_high = td["tw_high"][..., None]
+        width = tw_high - tw_low
+        batch_size = td["cost"].shape[0]
+        prize_dis_depot = td["adj"][range(batch_size), :, 0][..., None]
+        feature = torch.concat([td["locs"], prob, cost, tw_low, tw_high, width,
+                                 td["maxtime"][..., None],
+                                 cost / width,
                                  prize_dis_depot], dim=-1)
         out = self.init_embed(feature)
         return out

@@ -167,7 +167,7 @@ class RL4COEnvBase(EnvBase):
                 log.warning(f"{phase}_file not set. Generating dataset instead")
             td = self.generate_data(batch_size)
         else:
-            # log.info(f"Loading {phase} dataset from {f}")
+            log.info(f"Loading {phase} dataset from {f}")
             if phase == "train":
                 log.warning(
                     "Loading training dataset from file. This may not be desired in RL since "

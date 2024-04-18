@@ -20,6 +20,9 @@ from rl4co.envs.routing import (
     SVRPEnv,
     CSPEnv,
     SCPEnv,
+    OPSWTWEnv,
+    OPSPTWEnv,
+    OPSAEnv
 )
 
 # Scheduling
@@ -44,6 +47,9 @@ ENV_REGISTRY = {
     "csp": CSPEnv,
     "scp": SCPEnv,
     "smtwtp": SMTWTPEnv,
+    "opswtw": OPSWTWEnv,
+    "opsptw": OPSPTWEnv,
+    "opsa": OPSAEnv
 }
 
 
