@@ -20,7 +20,7 @@ logger:
     tags: ["adv-am", "${env.name}"]
     group: ${env.name}${env.num_loc}
     name: am-${env.name}${env.num_loc}
-    offline: False
+    offline: True
 
 
 model_psro:
@@ -66,7 +66,7 @@ model_adversary:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs:  50 #
+  max_epochs:  1 #
 
 seed: 1200
 

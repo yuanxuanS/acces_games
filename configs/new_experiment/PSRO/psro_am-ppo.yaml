@@ -2,7 +2,7 @@
 
 defaults:
   
-  - override /env: svrp.yaml
+  - override /env: opsptw.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
@@ -25,7 +25,7 @@ logger:
 
 model_psro:
   batch_size:  512 #10 #
-  val_batch_size: 1024  #10 #
+  val_batch_size: 10_000  #1024  #10 #
   test_batch_size: 1024 #10   #
   train_data_size: 640_000  #100  #
   val_data_size: 10_000  #
@@ -34,6 +34,7 @@ model_psro:
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
+
 model:
   optimizer_kwargs:
     lr: 1e-4
@@ -41,12 +42,12 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [25, 30] # 200相当于不降低
+    milestones: [7, 12] #
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-03-03_10-02-53/rl4co/7dn06gfe/checkpoints/epoch=99-step=125000.ckpt"
+load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/opsptw20/am-opsptw20/2024-04-15_20-14-34/rl4co/r27suf05/checkpoints/epoch=99-step=250000.ckpt"
 # null
 
 train_with_pretrain: null
