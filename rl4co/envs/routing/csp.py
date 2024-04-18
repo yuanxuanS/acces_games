@@ -58,7 +58,7 @@ class CSPEnv(RL4COEnvBase):
         curr_distance: curr node i, distance to all other nodes, [batch, num_loc], torch.bool
         
         '''
-        curr_distance[~covered_node_bool] =  10
+        curr_distance[~covered_node_bool] =  10000
         i, idx = curr_distance.sort(dim=-1)      # [batch, num_loc]
         _, distance_sort_idx = idx.sort(dim=-1)
         covered_sort = torch.where(covered_node_bool, distance_sort_idx + 1,
@@ -69,6 +69,11 @@ class CSPEnv(RL4COEnvBase):
         
         
     def _step(self, td: TensorDict) -> TensorDict:
+        '''
+        update state:
+            current node
+        '''
+        batch_size = td.batch_size[0]
         current_node = td["action"]
         first_node = current_node if td["i"].all() == 0 else td["first_node"]
 
@@ -81,6 +86,13 @@ class CSPEnv(RL4COEnvBase):
         # uncertrain_prob = func(curr_dist, uncertain_coverd_by_curr_node)        # []
         
         covered_node = curr_dist < self.min_cover
+        # in media distance, prob p to cover: p=softmax(dij)
+        media_node = (curr_dist >= self.min_cover) & (curr_dist < self.max_cover)
+        tmp = torch.rand((batch_size, self.num_loc)).to(td.device)
+        prob = torch.softmax((curr_dist * media_node))
+        media_cover = tmp <= prob
+        covered_node[media_cover] = True
+
         td["covered_node"][covered_node] = 1       #[batch, num_loc]
         curr_covered_guidence_vec = CSPEnv.get_covered_guidence_vec(covered_node, curr_dist.clone())
         td["guidence_vec"] *= torch.where(covered_node, curr_covered_guidence_vec,
@@ -92,7 +104,7 @@ class CSPEnv(RL4COEnvBase):
             -1, current_node.unsqueeze(-1).expand_as(td["action_mask"]), 0
         )   # 将current node值作为索引， 使对应的action mask为0
 
-        # We are done when all nodes are visited
+        #  done when all nodes are visited or covered
         done = (torch.sum(td["covered_node"], dim=-1) == self.num_loc) | (torch.sum(available, dim=-1) == 0)
         
         # # set complete solution: the first node's action_mask to False to avoid softmax(all -inf)=> nan error
@@ -128,7 +140,11 @@ class CSPEnv(RL4COEnvBase):
         device = init_locs.device if init_locs is not None else self.device
         self.to(device)
         if init_locs is None:
-            init_locs = self.generate_data(batch_size=batch_size).to(device)["locs"]
+            data = self.generate_data(batch_size=batch_size).to(device)
+            init_locs = data["locs"]
+            max_cover = data["max_cover"]
+            stochastic_maxcover = data["stochastic_maxcover"]
+            weather = data["weather"]
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
         # We do not enforce loading from self for flexibility
@@ -158,6 +174,9 @@ class CSPEnv(RL4COEnvBase):
                 "covered_node": covered_node,
                 "guidence_vec": guidence_vec,
                 "reward": torch.zeros((*batch_size, 1), dtype=torch.float32),
+                "max_cover": max_cover,
+                "stochastic_maxcover": stochastic_maxcover,
+                "weather": weather
             },
             batch_size=batch_size,
         )
@@ -231,7 +250,103 @@ class CSPEnv(RL4COEnvBase):
             .uniform_(self.min_loc, self.max_loc)
             ).to(self.device)
         
+        max_cover = (
+            torch.FloatTensor(*batch_size, self.num_loc)
+            .uniform_(self.min_cover, self.max_cover)
+            ).to(self.device)
         
+        # weather
+        weather = (
+            torch.FloatTensor(batch_size, 3)
+            .uniform_(-1, 1)
+        ).to(self.device)
+
+        stochastic_maxcover = self.get_stoch_var(max_cover.to("cpu"),
+                                                locs.to("cpu"), 
+                                                weather[:, None, :].
+                                                repeat(1, self.num_loc, 1).to("cpu"),
+                                                None).squeeze(-1).float().to(self.device)
+
+        return TensorDict({"locs": locs,
+                           "max_cover": max_cover,
+                           "stochastic_maxcover": stochastic_maxcover,
+                           "weather": weather,
+                           }, batch_size=batch_size)
+    
+    # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
+    def get_stoch_var(self, inp, locs, w, alphas=None, A=0.6, B=0.2, G=0.2):
+        '''
+        locs: [batch, num_customers, 2]
+        '''
+        # h = hpy().heap()
+        if inp.dim() <= 2:
+            inp_ =  inp[..., None]
+        else:
+            inp_ = inp.clone()
+
+        n_problems,n_nodes,shape = inp_.shape
+        T = inp_/A
+
+        # var_noise = T*G
+        # noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        # noise = var_noise*noise     # multivariable normal distr, var_noise mean
+        # noise = torch.clamp(noise, min=-var_noise)
         
-        return TensorDict({"locs": locs}, batch_size=batch_size)
+        var_noise = T*G
+
+        noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
+        noise = torch.clamp(noise, min=-var_noise, max=var_noise)
+
+        var_w = torch.sqrt(T*B)
+        # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
+        sum_alpha = var_w[:, :, None, :]*9      #? 4.5
+        
+        if alphas is None:  
+            alphas = torch.rand((n_problems, 1, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        alphas_loc = locs.sum(-1)[..., None, None]/2 * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
+            # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
+        # alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
+        alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
+        alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
+        signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
+        # signs = torch.where(signs > 0.5)
+        alphas_loc[signs > 0.5] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        # alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
+        
+        w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
+        # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
+        w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
+        
+        tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
+        tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        
+        # del tot_w, noise
+        del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
+        del T, noise, var_w
+        del inp_
+        # gc.collect()
+        
+        return out
+
+    def reset_stochastic_var(self, td, adver_out):
+        td = self.reset_stochastic_maxcover(td, adver_out)
+        return td
+    
+    def reset_stochastic_maxcover(self, td, adver_action):
+        '''
+        adver_action: batch ,9
+        '''
+        batch_size = td["cost"].size(0)
+        locs_cust = td["locs"].clone()
+        stochastic_maxcover = self.get_stoch_var(td["stochastic_maxcover"].to("cpu"),
+                                                locs_cust.to("cpu"), 
+                                                td["weather"][:, None, :].
+                                                repeat(1, self.num_loc, 1).to("cpu"),
+                                                adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
+
+        
+        td.set("stochastic_maxcover", stochastic_maxcover)
+        return td
+    
 
