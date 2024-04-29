@@ -7,6 +7,7 @@ from rl4co.utils.trainer import RL4COTrainer
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
+from rl4co.utils.heuristic_utils import convert_to_fit_npz
 
 import time
 import random
@@ -15,6 +16,11 @@ class LocalSearch1_csp:
     def __init__(self, td) -> None:
         super().__init__()
         '''
+        find improvements in a solution S by replacing some nodes of the current tour.
+         achieves this in a two-step manner.
+            First, LS1 deletes a fixed number of nodes.
+            2. attempts to make the solution feasible by inserting new nodes into S
+            
         td: TensorDict, after call .reset() function
         td["locs"]: [batch, num_customer, 2], customers and depot(0)
         td["min_cover"]: [batch, num_customer]
@@ -30,7 +36,7 @@ class LocalSearch1_csp:
         '''
         self.device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.td = td
-        self.batch_size = td.batch_size
+        self.batch_size = self.td["locs"].shape[0]
         self.num_loc = self.td["locs"].shape[1]
         self.locs = td["locs"]
         self.min_cover = td["min_cover"]
@@ -207,9 +213,29 @@ class LocalSearch1_csp:
         return tour, best_tour, best_cost
 
     def forward(self):
-        pass
+        rewards = []
+        routes = []
+        st = time.time()
+        for i in range(self.batch_size):
+            print(f"search for data {i}")
+            cost, solution = self.forward_single()
+            print(solution)
+            self.instance_idx += 1
+            rewards.append(cost)
+            routes.append(solution)
+        
+        est = time.time()
+        print(f"total time: {est - st}, mean time: {(est - st) / self.batch_size}")
 
-    def forward_single(self, tour=None, print_enable=True, stop_cost = -1e6):
+        routes = convert_to_fit_npz(routes)
+
+        return {
+            "solutions": routes,
+            "real rewards": rewards,
+            "real mean reward": sum(rewards) / len(rewards)
+        }
+    
+    def forward_single(self, tour=None, print_enable=False, stop_cost = -1e6):
 
         if tour is None:
             tour = self.init_solution()
@@ -276,4 +302,4 @@ class LocalSearch1_csp:
                     print("Iteration %d, Current distance: %2.3f" % (i, best_cost))
             if best_cost <= stop_cost:
                 return best_tour
-        return best_tour
+        return best_cost, best_tour
