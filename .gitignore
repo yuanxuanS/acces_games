@@ -5,6 +5,13 @@
 README.md
 # only at the project root (leading /)
 # /data 
+/data
+!/data/csp
+!/data/opsa
+!/data/opswtw
+!/data/opswtw_train
+!/data/svrp
+
 *.npz
 *.npy
 *.pkl
