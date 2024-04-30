@@ -3,3 +3,8 @@ from rl4co.heuristic.tabu_search_svrp import TabuSearch_svrp
 from rl4co.heuristic.random_svrp import Random_svrp
 from rl4co.heuristic.fixed_svrp import Fixed_svrp
 from rl4co.heuristic.greedy_scp import Greedy_scp
+from rl4co.heuristic.localsearch_opsa import LocalSearch_opsa
+from rl4co.heuristic.LS1_csp import LocalSearch1_csp
+from rl4co.heuristic.LS1_csp_batch import LocalSearch1_batch_csp
+from rl4co.heuristic.LS2_csp import LocalSearch2_csp
+from rl4co.heuristic.LS_2opt_csp import LS_csp_2opt

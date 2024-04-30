@@ -12,10 +12,11 @@ from rl4co.utils.heuristic_utils import convert_to_fit_npz
 import time
 import random
 from .LS_2opt_csp import LS_csp_2opt
-class LocalSearch1_csp:
+class LocalSearch1_batch_csp:
     def __init__(self, td) -> None:
         super().__init__()
         '''
+        batch version for acceleration
         find improvements in a solution S by replacing some nodes of the current tour.
          achieves this in a two-step manner.
             First, LS1 deletes a fixed number of nodes.
@@ -61,12 +62,12 @@ class LocalSearch1_csp:
         从depot出发
         '''
         ids = torch.arange(1, self.num_loc)
-        uncovered_indices = ids
-        num_uncovered = self.num_loc - 1
+        uncovered_indices = ids[None, ...].repeat(self.batch_size, 1)   # [batch, num_loc-1]
+        num_uncovered = torch.ones(self.batch_size) * (self.num_loc - 1) # [batch, ]
         tour = [0]
 
         # 不断加入，直到所有节点都被覆盖
-        while num_uncovered>0:
+        while (num_uncovered > 0).any():
             n_selected = random.choice(uncovered_indices)
             tour.append(int(n_selected))
             cover_indices = self.cover_idx(int(n_selected))     # 在覆盖范围内的nodes的索引

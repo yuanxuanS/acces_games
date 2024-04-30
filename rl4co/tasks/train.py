@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple
 from rl4co.tasks.eval import evaluate_policy
-
+from rl4co.tasks.eval_heuristic import evaluate_baseline
 import hydra
 import lightning as L
 import pyrootutils
@@ -113,12 +113,23 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             ckpt_path = trainer.checkpoint_callback.best_model_path
             evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)
             save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
-        log.info(f"Best ckpt path: {ckpt_path}")
+        log.info(f" ckpt path: {ckpt_path}")
         
         dataset = env.dataset(phase="test")     # 使用test的数据集做evaluation
         
         evaluate_policy(env, evaluate_model.policy, dataset, method, save_results=True, save_fname=save_fname)
 
+    if cfg.get("evaluate_baseline"):
+        baseline = cfg.baseline
+        log.info(f" evaluation by {baseline}!")
+        ckpt_path = cfg.get("ckpt_path")
+        evaluate_model = model.load_from_checkpoint(ckpt_path)
+        save_fname = cfg.get("evaluate_loc") + "/evalu_"+baseline+".npz"
+        log.info(f" ckpt path: {ckpt_path}")
+
+        
+        # 使用test的数据集做evaluation
+        evaluate_baseline(env, None, baseline, save_fname=save_fname)
     return metric_dict, object_dict
 
 

@@ -34,7 +34,7 @@ class CW_svrp:
         self.sorted_savings = None
         self.routes = list()
         self.capacity = 1        # define by env
-        
+        self.print_enable = True
         
     def __node_data(self):
         # get node data in coordinate (x,y) format from envs 
@@ -220,7 +220,8 @@ class CW_svrp:
         self.__get_savings()
         
         for i in range(self.data_nodes.size(0)):
-            # print(f"instance {i}")
+            if self.print_enable:
+                print(f"instance {i}")
             single_routes = self.forward_single(i)
             # concat all routes to a route of an instance
             single_routes = [action for routes in single_routes for action in routes]       # actions with multiply depots
