@@ -54,16 +54,18 @@ class CSPEnv(RL4COEnvBase):
     @staticmethod
     def get_covered_guidence_vec(covered_node_bool, curr_distance):
         '''
-        covered_node: [batch, num_loc], torch.bool
+        该向量描述当前covered node的 gi *= ci / N, ci为覆盖点的排序(从1-N), N为总覆盖点个数。 
+            越近,gi越小,代表再次被选的概率越小。
+        covered_node_bool: [batch, num_loc], torch.bool
         curr_distance: curr node i, distance to all other nodes, [batch, num_loc], torch.bool
         
         '''
         curr_distance[~covered_node_bool] =  10000
-        i, idx = curr_distance.sort(dim=-1)      # [batch, num_loc]
-        _, distance_sort_idx = idx.sort(dim=-1)
-        covered_sort = torch.where(covered_node_bool, distance_sort_idx + 1,
+        i, idx = curr_distance.sort(dim=-1)      # [batch, num_loc], i为排序后的dist， idx为排序后的dist在原来的idx
+        _, distance_sort_idx = idx.sort(dim=-1)     # distance_sort_idx为dist排序的位次：从近到远: 0---
+        covered_sort = torch.where(covered_node_bool, distance_sort_idx + 1,    # covered node根据距离排序的序号，从1开始到N（覆盖点个数; 未覆盖的=0
                                    torch.zeros_like(covered_node_bool))
-        curr_covered_num = covered_node_bool.sum(dim=-1)     # [batch, ]
+        curr_covered_num = covered_node_bool.sum(dim=-1)     # [batch, ]    # 覆盖点个数
         return covered_sort / (curr_covered_num.unsqueeze(-1) + 1e-5)
         
         
@@ -75,25 +77,27 @@ class CSPEnv(RL4COEnvBase):
         '''
         batch_size = td.batch_size[0]
         current_node = td["action"]
-        first_node = current_node if td["i"].all() == 0 else td["first_node"]
+        first_node = current_node if td["i"].all() == 0 else td["first_node"]       # 看起来这一句和td["i"]都没什么用
 
         # get covered node of current node
         locs = td["locs"]       # [batch, num_loc,2]
-        curr_locs = locs.gather(-2, current_node[None, ..., None].repeat(1,1,2)).squeeze(0).unsqueeze(-2)     # [batch, 2]
+        # curr_locs = locs.gather(-2, current_node[None, ..., None].repeat(1,1,2)).squeeze(0).unsqueeze(-2)     # [batch, 2]
+        curr_locs = locs[range(batch_size), current_node][:, None, :].repeat(1, self.num_loc, 1)     # [batch, 2]
         curr_dist = (locs - curr_locs).norm(p=2, dim=-1)        #[batch, num_loc]
-        # covered_by_curr_node = torch.nonzero([curr_dist < self.min_cover])     # [batch, satisfy num]
-        # uncertain_coverd_by_curr_node = torch.nonzero([curr_dist > self.min_cover] & [curr_dist < self.max_cover])
-        # uncertrain_prob = func(curr_dist, uncertain_coverd_by_curr_node)        # []
-        
+
+        # covered node: cover < min_cover, prob p to cover in (media_cover, max_cover): p=softmax(dij)
         covered_node = curr_dist < self.min_cover
         # in media distance, prob p to cover: p=softmax(dij)
-        media_node = (curr_dist >= self.min_cover) & (curr_dist < self.max_cover)
-        tmp = torch.rand((batch_size, self.num_loc)).to(td.device)
-        prob = torch.softmax((curr_dist * media_node))
-        media_cover = tmp <= prob
+        max_cover = td["stochastic_maxcover"][range(batch_size), current_node][..., None].repeat(1, self.num_loc)
+        media_cover = (curr_dist >= self.min_cover) & (curr_dist < max_cover)
+        # tmp = torch.rand((batch_size, self.num_loc)).to(td.device)
+        # masked = curr_dist * media_node
+        # masked = torch.where(media_node, masked, -torch.ones_like(masked) * 1e5)
+        # prob = torch.softmax((masked), -1)
+        # media_cover = tmp <= prob
         covered_node[media_cover] = True
 
-        td["covered_node"][covered_node] = 1       #[batch, num_loc]
+        td["covered_node"][covered_node] = True       #[batch, num_loc]
         curr_covered_guidence_vec = CSPEnv.get_covered_guidence_vec(covered_node, curr_dist.clone())
         td["guidence_vec"] *= torch.where(covered_node, curr_covered_guidence_vec,
                                                         torch.ones_like(covered_node))
@@ -101,7 +105,7 @@ class CSPEnv(RL4COEnvBase):
         # # Set not visited to 0 (i.e., we visited the node)
         # in csp, covered node still can be visited
         available = td["action_mask"].scatter(
-            -1, current_node.unsqueeze(-1).expand_as(td["action_mask"]), 0
+            -1, current_node.unsqueeze(-1).expand_as(td["action_mask"]), False
         )   # 将current node值作为索引， 使对应的action mask为0
 
         #  done when all nodes are visited or covered
@@ -112,7 +116,7 @@ class CSPEnv(RL4COEnvBase):
         done_endnode = current_node[done_idx]   #[batch]
         # first set the done data's action_mask all to False
         available[done_idx, :] = False
-        # then set its first node to True
+        # 结束的instance，可选的node只有最后一个action
         available[done_idx, done_endnode] = True
         
         # The reward is calculated outside via get_reward for efficiency, so we set it to 0 here
@@ -130,39 +134,76 @@ class CSPEnv(RL4COEnvBase):
                 "done": done,
             },
         )
+
         return td
 
+
+    
     def _reset(self, td: Optional[TensorDict] = None, batch_size=None) -> TensorDict:
-        # Initialize locations
-        init_locs = td["locs"] if td is not None else None
+        if td is not None:
+            init_locs = td["locs"]
+            max_cover = td["max_cover"]
+            stochastic_maxcover = td["stochastic_maxcover"]
+            weather = td["weather"]
+            min_cover = td["min_cover"]
+        else:
+            init_locs = None
+
         if batch_size is None:
             batch_size = self.batch_size if init_locs is None else init_locs.shape[:-2]
         device = init_locs.device if init_locs is not None else self.device
         self.to(device)
-        if init_locs is None:
+
+        if init_locs is None:       # if no td, generate data 
             data = self.generate_data(batch_size=batch_size).to(device)
             init_locs = data["locs"]
             max_cover = data["max_cover"]
             stochastic_maxcover = data["stochastic_maxcover"]
             weather = data["weather"]
+            min_cover = data["min_cover"]
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
         # We do not enforce loading from self for flexibility
         num_loc = init_locs.shape[-2]
 
-        # Other variables
+        # start from depot
         current_node = torch.zeros((batch_size), dtype=torch.int64, device=device)
-        available = torch.ones(
-            (*batch_size, num_loc), dtype=torch.bool, device=device
-        )  # 1 means not visited, i.e. action is allowed
+        # get covered node of depot
+        curr_locs = init_locs[range(batch_size[0]), current_node][:, None, :].repeat(1, num_loc, 1)     # [batch, 2]
+        curr_dist = (init_locs - curr_locs).norm(p=2, dim=-1)        #[batch, num_loc]
+
+        # covered node: cover < min_cover, prob p to cover in (media_cover, max_cover): p=softmax(dij)
+        curr_covered_node = curr_dist < self.min_cover
+        # in media distance, prob p to cover: p=softmax(dij)
+        real_max_cover = stochastic_maxcover[range(*batch_size), current_node][..., None].repeat(1, self.num_loc)
+        media_cover = (curr_dist >= self.min_cover) & (curr_dist < real_max_cover)
+        curr_covered_node[media_cover] = True
         covered_node = torch.zeros(
             (*batch_size, num_loc), dtype=torch.bool, device=device
         )  # 1 means covered, i.e. but action is still allowed
-        
+        covered_node[curr_covered_node] = True       #[batch, num_loc]
+
+
+        curr_covered_guidence_vec = CSPEnv.get_covered_guidence_vec(covered_node, curr_dist.clone())
+
         guidence_vec = torch.ones(
             (*batch_size, num_loc), dtype=torch.float64, device=device
         )  # update while decoding, init 1. covered then decrease
-        i = torch.zeros((*batch_size, 1), dtype=torch.int64, device=device)
+        # 用于计数：现在选到的node个数
+        i = torch.ones((*batch_size, 1), dtype=torch.int64, device=device)
+        guidence_vec *= torch.where(covered_node, curr_covered_guidence_vec,
+                                                        torch.ones_like(covered_node))
+        
+
+        
+        available = torch.ones(
+            (*batch_size, num_loc), dtype=torch.bool, device=device
+        )  # 1 means not visited, i.e. action is allowed
+        available[:, 0] = False # can not visited depot
+
+        
+
+        
 
         return TensorDict(
             {
@@ -174,6 +215,7 @@ class CSPEnv(RL4COEnvBase):
                 "covered_node": covered_node,
                 "guidence_vec": guidence_vec,
                 "reward": torch.zeros((*batch_size, 1), dtype=torch.float32),
+                "min_cover": min_cover,
                 "max_cover": max_cover,
                 "stochastic_maxcover": stochastic_maxcover,
                 "weather": weather
@@ -245,19 +287,19 @@ class CSPEnv(RL4COEnvBase):
             
     def generate_data(self, batch_size) -> TensorDict:
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
-        locs = (
+        locs = (        # batch, num_loc, 2
             torch.FloatTensor(*batch_size, self.num_loc, 2)
             .uniform_(self.min_loc, self.max_loc)
             ).to(self.device)
         
-        max_cover = (
+        max_cover = (       # batch, num_loc, 
             torch.FloatTensor(*batch_size, self.num_loc)
             .uniform_(self.min_cover, self.max_cover)
             ).to(self.device)
         
         # weather
-        weather = (
-            torch.FloatTensor(batch_size, 3)
+        weather = (         # batch, 3
+            torch.FloatTensor(*batch_size, 3)
             .uniform_(-1, 1)
         ).to(self.device)
 
@@ -266,8 +308,12 @@ class CSPEnv(RL4COEnvBase):
                                                 weather[:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 None).squeeze(-1).float().to(self.device)
-
+        # 不能超过max_cover范围
+        stochastic_maxcover = torch.clamp(stochastic_maxcover, max=self.max_cover)
+        # min cover: 仅为了initembedding中
+        min_cover = torch.ones_like(max_cover) * self.min_cover
         return TensorDict({"locs": locs,
+                           "min_cover": min_cover,
                            "max_cover": max_cover,
                            "stochastic_maxcover": stochastic_maxcover,
                            "weather": weather,
@@ -337,15 +383,15 @@ class CSPEnv(RL4COEnvBase):
         '''
         adver_action: batch ,9
         '''
-        batch_size = td["cost"].size(0)
+        
         locs_cust = td["locs"].clone()
         stochastic_maxcover = self.get_stoch_var(td["stochastic_maxcover"].to("cpu"),
                                                 locs_cust.to("cpu"), 
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
-
-        
+        # 不能超过max_cover范围
+        stochastic_maxcover = torch.clamp(stochastic_maxcover, max=self.max_cover)
         td.set("stochastic_maxcover", stochastic_maxcover)
         return td
     

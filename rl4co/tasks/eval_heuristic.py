@@ -15,7 +15,7 @@ def check_unused_kwargs(class_, kwargs):
 def evaluate_baseline(
     env,
     dataset_filename,
-    baseline="greedy",
+    baseline="cw",
     save_results=True,
     save_fname="results.npz",
     **kwargs,
@@ -23,16 +23,17 @@ def evaluate_baseline(
     num_loc = getattr(env, "num_loc", None)
 
     baselines_mapping = {
-        "cw": {"func": CW_svrp, "kwargs": {}},
-        "tabu": {
-            "func": TabuSearch_svrp, "kwargs": {}},
-        "random": {
-            "func": Random_svrp, "kwargs": {}
-        },
-        "fixed": {"func": Fixed_svrp, "kwargs":{}}
+        "svrp": {
+            "cw": {"func": CW_svrp, "kwargs": {}},
+            "tabu": {
+                "func": TabuSearch_svrp, "kwargs": {}},
+            "random": {
+                "func": Random_svrp, "kwargs": {}
+            },}
+        # "fixed": {"func": Fixed_svrp, "kwargs":{}}
     }
 
-    assert baseline in baselines_mapping, "baseline {} not found".format(baseline)
+    assert baseline in baselines_mapping[env.name], "baseline {} not found".format(baseline)
 
 
     # env td  data
@@ -42,7 +43,7 @@ def evaluate_baseline(
     td_load = env._reset(td_load) 
        
     # Set up the evaluation function
-    eval_settings = baselines_mapping[baseline]
+    eval_settings = baselines_mapping[env.name][baseline]
     func, kwargs_ = eval_settings["func"], eval_settings["kwargs"]
     # subsitute kwargs with the ones passed in
     kwargs_.update(kwargs)
@@ -57,5 +58,5 @@ def evaluate_baseline(
     if save_results:
         print("Saving results to {}".format(save_fname))
         np.savez(save_fname, **retvals)
-
+    print("mean reward is ",retvals["mean reward"])
     return retvals

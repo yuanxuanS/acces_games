@@ -221,7 +221,7 @@ class Protagonist:
         
         # max_epoch = 1
         if epoch == 0:
-            max_epoch = 30 # 15
+            max_epoch = 20 # 15
         elif epoch > 0 and epoch < 5:
             max_epoch = 20  # 10
         else: 
@@ -416,7 +416,7 @@ class Adversary:
                                                              policy=cur_policy, critic=cur_critic)
     
 
-        # fix adver's params / not update
+        # fix prog's params / not update
         # run until can't get more reward / reward converge
         psro_model: LightningModule = hydra.utils.instantiate(cfg.model_psro, self.env, prog_model,
                                                               cur_model, 

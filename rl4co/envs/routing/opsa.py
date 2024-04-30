@@ -94,26 +94,40 @@ class OPSAEnv(RL4COEnvBase):
         cost = td_load["prize"][:batch_size, ...]
         td_load.set("cost", cost)
         
-        # generate p: saved
-        attack_prob = (
-            torch.FloatTensor(batch_size, self.num_loc)
-            .uniform_(0, 1)
-        ).to(self.device)
-        attack_prob[:, 0] = 0.
-        td_load.set("attack_prob", attack_prob)
-        # influence prize by attack prob
-        tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
+        if "val" in fpath:  # load other data for valand test
+            part_pth = "/home/panpan/rl4co/data/opsa/val_part_data.npz"
+            td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
+            attack_prob = td_load_part["attack_prob"]
+            tmp = td_load_part["real_prob"]
+            weather = td_load_part["weather"]
+            
+        else:
+            # part_pth = "/home/panpan/rl4co/data/opsa/train_part_data.npz"
+            # weather
+            weather = (
+                torch.FloatTensor(batch_size, 3)
+                .uniform_(-1, 1)
+            ).to(self.device)
+            # generate p: saved
+            attack_prob = (
+                torch.FloatTensor(batch_size, self.num_loc)
+                .uniform_(0, 1)
+            ).to(self.device)
+            attack_prob[:, 0] = 0.
+        
+            # influence prize by attack prob
+            tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
+
+        
+        
         tmp = tmp * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
         attacked = tmp < attack_prob
         stoch_cost = cost.clone() * attacked
+        
+
+        td_load.set("attack_prob", attack_prob)
         td_load.set("real_prob", tmp)       # 先固定real prob看效果
         td_load.set("stochastic_cost", stoch_cost)
-
-        # weather
-        weather = (
-            torch.FloatTensor(batch_size, 3)
-            .uniform_(-1, 1)
-        ).to(self.device)
         td_load.set("weather", weather)
 
         return td_load
@@ -316,9 +330,9 @@ class OPSAEnv(RL4COEnvBase):
         done[back_to_depot_idx] = True
         back_to_depot = self.check_if_back(td, current_node, tour_time)
         done[back_to_depot] = True
-        # - cost if defend 
+        # add cost to reward(maximize) if defend 
         curr_cost = td["curr_cost"]
-        real_cost = -td["stochastic_cost"][range(batch_size), current_node]
+        real_cost = td["stochastic_cost"][range(batch_size), current_node]
         # still penalty attack's cost if exceeds the high thres
         curr_cost = td["curr_cost"]
         curr_penalty = tour_time >= curr_tw_high

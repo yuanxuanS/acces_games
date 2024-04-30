@@ -131,10 +131,24 @@ def concat_npz_data(dir):
     # print(data)
     np.savez(save_pth, **data)
 
+def generate_and_save_opsa_data(batch_size, num_loc):
+    attack_prob = np.random.uniform(0, 1, size=(batch_size, num_loc)).astype(np.float32)
+    attack_prob[:, 0] =0
+    real_prob = np.random.uniform(0, 1, size=(batch_size, num_loc)).astype(np.float32)
+    real_prob[:, 0] =0
+    weather = np.random.uniform(0, 1, size=(batch_size, 3)).astype(np.float32)
+    
+    data = {"attack_prob": attack_prob, 
+                "real_prob": real_prob,
+                "weather": weather}
+    val_pth = "/home/panpan/rl4co/data/opsa/val_part_data.npz"
+    np.savez(val_pth, **data)
+
+generate_and_save_opsa_data(10000, 20)
 # process_swtwtsp_data(0)
 # generate_opswtw_data(1280000)
 # concat_npz_data(0)
-td = load_npz_to_tensordict("/home/panpan/rl4co/data/opswtw_train/opswtw_train.npz")
-print(td["maxtime"].max(), td["tw_high"].max())
+# td = load_npz_to_tensordict("/home/panpan/rl4co/data/opswtw_train/opswtw_train.npz")
+# print(td["maxtime"].max(), td["tw_high"].max())
 # print(td.batch_size, td.keys())
 # generate_stochastoc_factor()

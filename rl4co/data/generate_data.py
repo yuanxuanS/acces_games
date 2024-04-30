@@ -40,14 +40,28 @@ def generate_env_data(env_type, *args, **kwargs):
         raise NotImplementedError(f"Environment type {env_type} not implemented")
 
 
+def generate_csp_data(dataset_size, csp_size):
+    locs = np.random.uniform(size=(dataset_size, csp_size, 2)).astype(np.float32)
+    size = csp_size
+    max_cover = np.random.uniform(size=(dataset_size, csp_size), low=0.1, high=0.3).astype(np.float32)
+    weather = np.random.uniform(low=-1., high=1., size=(dataset_size, 3)).astype(np.float32)
+    stochastic_maxcover = get_stoch_var(max_cover[..., np.newaxis],
+                                          locs.copy(),
+                                                np.repeat(weather[:, np.newaxis, :], size, axis=1),
+                                                None).squeeze(-1).astype(np.float32)
+    stochastic_maxcover = np.clip(stochastic_maxcover, a_min=0., a_max=0.3)
+    min_cover = np.ones_like(max_cover) * 0.1
+    return {
+        "locs": locs,
+        "max_cover": max_cover,
+        "weather": weather,
+        "stochastic_maxcover": stochastic_maxcover,
+        "min_cover": min_cover,
+    }
+
 def generate_tsp_data(dataset_size, tsp_size):
     return {
         "locs": np.random.uniform(size=(dataset_size, tsp_size, 2)).astype(np.float32)
-    }
-
-def generate_csp_data(dataset_size, csp_size):
-    return {
-        "locs": np.random.uniform(size=(dataset_size, csp_size, 2)).astype(np.float32)
     }
 
 def generate_scp_data(dataset_size, scp_size):

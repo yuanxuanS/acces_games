@@ -21,18 +21,21 @@ class TabuSearch_svrp:
         self.tabu_len = 0
         self.best_sol = None
         self.best_cost = None
+        self.print_enable = True
         
     def forward(self):
         '''get solutions of all batch instances:
         search according expected demand, but evaluate it with real demand
         '''
-        print('------Tabu search-----')
+        if self.print_enable:
+            print('------Tabu search-----')
         time_start = time.time()
         batch_solutions = list()
         batch_costs = list()
         batch_costs_real = list()       
         for i in range(self.batch_size):
-            print(f"search for data {i}")
+            if self.print_enable:
+                print(f"search for data {i}")
             instance_i = self.td[i]
             best_solution, best_cost = self.forward_single(instance_i)
             batch_solutions.append(best_solution)
@@ -40,16 +43,16 @@ class TabuSearch_svrp:
             
             real_cost = self.get_real_penalty(best_solution, i) + best_cost
             batch_costs_real.append(real_cost)        
-        print(f"best cost of all data are {batch_costs}")
-        print(f"real cost of all data are {batch_costs_real}")
+        # print(f"best cost of all data are {batch_costs}")
+        # print(f"real cost of all data are {batch_costs_real}")
         
         batch_solutions = convert_to_fit_npz(batch_solutions)
         time_end = time.time()
         print(f"time is {time_end - time_start}")
         return {
-            "solutions": batch_solutions,
-            "real rewards": batch_costs_real,
-            "real mean reward": sum(batch_costs_real) / len(batch_costs_real)
+            "routes": batch_solutions,
+            "rewards": batch_costs_real,
+            "mean reward": sum(batch_costs_real) / len(batch_costs_real)
         }
     
     

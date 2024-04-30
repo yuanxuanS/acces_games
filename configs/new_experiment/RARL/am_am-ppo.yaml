@@ -2,7 +2,7 @@
 
 defaults:
   
-  - override /env: opsptw.yaml
+  - override /env: csp.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
