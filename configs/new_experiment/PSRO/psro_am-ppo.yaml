@@ -2,7 +2,7 @@
 
 defaults:
   
-  - override /env: csp.yaml
+  - override /env: svrp.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
@@ -47,7 +47,7 @@ model:
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-04-25_14-06-46/rl4co/u9r7s1o3/checkpoints/epoch=99-step=125000.ckpt"
+load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt"
 # null
 
 train_with_pretrain: null

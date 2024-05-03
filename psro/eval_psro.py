@@ -453,7 +453,7 @@ def sample_strategy(distrib):
     return strategy_i
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="main_psro_frame.yaml")
-def run_psro(cfg: DictConfig):
+def eval_psro(cfg: DictConfig):
     
     # trainer.logger = logger
     log.info("Instantiating callbacks...")
@@ -617,5 +617,13 @@ def run_psro(cfg: DictConfig):
     print("prog strategy: ", protagonist.strategy)
     print("final payoff", payoff_prot)
     print("iteration reward", iter_reward)
+
+
+def eval_psro():
+    # 加载psro prog和adver
+    # load 对应环境的test数据
+    # 有adver的eval
+    # 无adver的eval
+
 if __name__ == "__main__":
-    run_psro()
+    eval_psro()
