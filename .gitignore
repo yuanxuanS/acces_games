@@ -10,6 +10,7 @@ README.md
 *.pkl
 *.txt
 /tmp_svrp
+/data
 # Logs
 /logs
 
