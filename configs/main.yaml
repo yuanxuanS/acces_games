@@ -30,7 +30,7 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:   baseline_eval.yaml #default.yaml    #
+  - evaluate:   greedy_eval.yaml  # baseline_eval.yaml #default.yaml    # 
 
 # fix graph
 fix_graph: false

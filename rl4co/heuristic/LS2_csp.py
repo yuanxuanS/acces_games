@@ -249,9 +249,9 @@ class LocalSearch2_csp:
         routes = convert_to_fit_npz(routes)
 
         return {
-            "solutions": routes,
-            "real rewards": rewards,
-            "real mean reward": sum(rewards) / len(rewards)
+            "routes": routes,
+            "rewards": rewards,
+            "mean reward": sum(rewards) / len(rewards)
         }
 
     def forward_single(self, tour=None, stop_cost = -1e6):

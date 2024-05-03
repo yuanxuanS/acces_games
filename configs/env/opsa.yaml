@@ -3,6 +3,6 @@ name: opsa
 
 num_loc: 20
 
-data_dir: ${paths.root_dir}/data/opswtw
+data_dir: ${paths.root_dir}/data/opsa
 val_file: opswtw_val.npz
 test_file: opswtw_val.npz

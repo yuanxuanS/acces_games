@@ -32,7 +32,7 @@ model = AttentionModel(env,
 device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 td_init = env.reset(batch_size=[10]).to(device)      # init batch_size datas by generate_data, return data in td
 
-baseline = LocalSearch1_batch_csp(td_init.clone())
+baseline = LocalSearch1_csp(td_init.clone())
 tour = baseline.forward()
 print(tour)
 # done = baseline.check_cover(tour)

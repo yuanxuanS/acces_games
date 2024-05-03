@@ -46,13 +46,13 @@ class OPSAEnv(RL4COEnvBase):
 
     def dataset(self, batch_size=[], phase="train", filename=None):
         """Return a dataset of observations
-            in opswtw, load data from presaved_data
+            in opsa, load data from presaved_data
         """
         
         if phase == "train":
-            filename = "/home/panpan/rl4co/data/opswtw_train/opswtw_train.npz"
+            filename = "/home/panpan/rl4co/data/opsa/opswtw_train.npz"
         elif phase == "val" or "test":
-            filename = "/home/panpan/rl4co/data/opswtw/opswtw_val.npz"
+            filename = "/home/panpan/rl4co/data/opsa/opswtw_val.npz"
         f = filename
         log.info(f"Loading {phase} dataset from {f}")
         try:
@@ -133,9 +133,8 @@ class OPSAEnv(RL4COEnvBase):
         return td_load
     
     def generate_data(self, batch_size) -> TensorDict:
-        # 返回归一化的数据
-        data_pth = "/home/panpan/rl4co/data/opswtw_train/opswtw_train.npz"
-        # noise_pth = "/home/panpan/rl4co/data/opswtw_train/noise_train.npz"
+        # 加载预先保存好的opsa 训练数据
+        data_pth = "/home/panpan/rl4co/data/opsa/opswtw_train.npz"
 
         x_dict = self.load_data(data_pth, batch_size)
         whole_size = x_dict.batch_size[0]

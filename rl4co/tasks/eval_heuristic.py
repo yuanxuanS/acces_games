@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, Fixed_svrp
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, LocalSearch1_csp, LocalSearch2_csp, localsearch_opsa
 
 def check_unused_kwargs(class_, kwargs):
     if len(kwargs) > 0 and not (len(kwargs) == 1 and "progress" in kwargs):
@@ -29,8 +29,15 @@ def evaluate_baseline(
                 "func": TabuSearch_svrp, "kwargs": {}},
             "random": {
                 "func": Random_svrp, "kwargs": {}
-            },}
-        # "fixed": {"func": Fixed_svrp, "kwargs":{}}
+            },},
+        "csp": {
+            "LS1": {"func": LocalSearch1_csp, "kwargs": {}},
+            "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
+        },
+        "opsa": {
+            "LS":  {"func": localsearch_opsa, "kwargs": {}},
+        }
+        
     }
 
     assert baseline in baselines_mapping[env.name], "baseline {} not found".format(baseline)
