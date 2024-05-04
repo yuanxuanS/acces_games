@@ -2,7 +2,7 @@
 
 defaults:
   - override /model: am.yaml
-  - override /env: svrp.yaml
+  - override /env: csp.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml
@@ -33,6 +33,7 @@ model:
   lr_scheduler_kwargs:
     milestones: [80, 95]
     gamma: 0.1
+  data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 

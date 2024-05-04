@@ -45,7 +45,12 @@ class SVRPEnv(CVRPEnv):
     
     env_fixed = True
     
-
+    stoch_params = {
+                        0: [0.6, 0.2, 0.2],
+                        1: [0.8, 0.2, 0.0],
+                        2: [0.8, 0.,  0.2],
+                        3: [0.4, 0.3, 0.3]
+                    }
     def __init__(self, generate_method = "modelize", env_fix=False, **kwargs):
         super().__init__(**kwargs)
         
@@ -55,8 +60,10 @@ class SVRPEnv(CVRPEnv):
         if env_fix:
             SVRPEnv.env_fixed = True
             SVRPEnv.name = "svrp_fix"
+        SVRPEnv.stoch_idx = kwargs.get("stoch_idx")
         
-    
+        
+
     def get_fix_data(self, graph_pool):
         if SVRPEnv.env_fixed:
             
@@ -323,6 +330,7 @@ class SVRPEnv(CVRPEnv):
         locs: [batch, num_customers, 2]
         '''
         # h = hpy().heap()
+        A, B, G = SVRPEnv.stoch_params[SVRPEnv.stoch_idx]
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
         else:

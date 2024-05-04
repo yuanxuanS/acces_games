@@ -3,6 +3,7 @@ name: csp
 
 num_loc: 20
 
-data_dir: ${paths.root_dir}/data/csp
-val_file: csp${env.num_loc}_val_seed4321.npz
-test_file: csp${env.num_loc}_test_seed1234.npz
+stoch_idx: ${paths.stoch_idx}   # for stoch model params
+data_dir: ${paths.root_dir}/data${paths.stoch_idx}/csp
+val_file: csp${env.num_loc}_val_seed4321_size10000.npz
+test_file: csp${env.num_loc}_test_seed1234_size100.npz

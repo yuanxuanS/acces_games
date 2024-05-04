@@ -33,7 +33,13 @@ class OPSAEnv(RL4COEnvBase):
         device: device to use.  Generally, no need to set as tensors are updated on the fly
     """
     name = "opsa"
-
+    stoch_params = {
+                        0: [0.6, 0.2, 0.2],
+                        1: [0.8, 0.2, 0.0],
+                        2: [0.8, 0.,  0.2],
+                        3: [0.4, 0.3, 0.3]
+                    }
+    
     def __init__(
         self,
         num_loc: int = 20,
@@ -42,7 +48,7 @@ class OPSAEnv(RL4COEnvBase):
         super().__init__(**kwargs)
         self.num_loc = num_loc
         self.prob_scale = 0.0   # attacker攻击的概率范围[prob_scale, 1)
-
+        OPSAEnv.stoch_idx = kwargs.get("stoch_idx")
 
     def dataset(self, batch_size=[], phase="train", filename=None):
         """Return a dataset of observations
@@ -177,6 +183,7 @@ class OPSAEnv(RL4COEnvBase):
         locs: [batch, num_customers, 2]
         '''
         # h = hpy().heap()
+        A, B, G = OPSAEnv.stoch_params[OPSAEnv.stoch_idx]
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
         else:

@@ -25,6 +25,13 @@ DISTRIBUTIONS_PER_PROBLEM = {
     "pdp": [None],
 }
 
+STOCH_PARAMS = {
+    0: [0.6, 0.2, 0.2],
+    1: [0.8, 0.2, 0.0],
+    2: [0.8, 0.,  0.2],
+    3: [0.4, 0.3, 0.3]
+}
+STOCH_IDX = 3
 
 def generate_env_data(env_type, *args, **kwargs):
     """Generate data for a given environment type in the form of a dictionary"""
@@ -211,6 +218,8 @@ def generate_svrp_fix_data(dataset_size, vrp_size, generate_type="modelize", cap
     
 # @profile(stream=open('logmem_get_stoch_var_gendata_rewrite.log', 'w+'))
 def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
+    A, B, G = STOCH_PARAMS[STOCH_IDX]   # 和env的stoch_idx一致
+    print(f"ABG in generate data is {A} {B} {G}")
     n_problems,n_nodes,shape = inp.shape
     T = inp/A
     

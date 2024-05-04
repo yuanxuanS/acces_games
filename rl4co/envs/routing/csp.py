@@ -32,7 +32,13 @@ class CSPEnv(RL4COEnvBase):
     """
 
     name = "csp"
-
+    stoch_params = {
+                        0: [0.6, 0.2, 0.2],
+                        1: [0.8, 0.2, 0.0],
+                        2: [0.8, 0.,  0.2],
+                        3: [0.4, 0.3, 0.3]
+                    }
+    
     def __init__(
         self,
         num_loc: int = 20,
@@ -50,6 +56,8 @@ class CSPEnv(RL4COEnvBase):
         self.min_cover = min_cover
         self.max_cover = max_cover
         self._make_spec(td_params)
+
+        CSPEnv.stoch_idx = kwargs.get("stoch_idx")
 
     @staticmethod
     def get_covered_guidence_vec(covered_node_bool, curr_distance):
@@ -325,6 +333,8 @@ class CSPEnv(RL4COEnvBase):
         locs: [batch, num_customers, 2]
         '''
         # h = hpy().heap()
+        A, B, G = CSPEnv.stoch_params[CSPEnv.stoch_idx]
+        print(f"ABG in csp is {A} {B} {G}")
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
         else:
