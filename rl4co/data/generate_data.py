@@ -406,7 +406,7 @@ def generate_dataset(
     data_distribution="all",
     dataset_size=10000,
     graph_sizes=[20, 50, 100],
-    overwrite=False,
+    overwrite=False,        # if exists, skip regenerate
     seed=1234,
     disable_warning=True,
     distributions_per_problem=None,
@@ -439,7 +439,7 @@ def generate_dataset(
                 if filename is None:
                     fname = os.path.join(
                         datadir,
-                        "{}{}{}_{}_seed{}.npz".format(
+                        "{}{}{}_{}_seed{}_size{}.npz".format(
                             problem,
                             "_{}".format(distribution)
                             if distribution is not None
@@ -447,6 +447,7 @@ def generate_dataset(
                             graph_size,
                             name,
                             seed,
+                            dataset_size,
                         ),
                     )
                 else:
