@@ -7,9 +7,12 @@ defaults:
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
   
-
-fix_graph: false
-
+# psro params
+iters: 30
+epsilon: 0.01
+prog_epoch1: 15
+prog_epoch2: 10
+adver_epoch: 5
 
 env:
   num_loc: 20
@@ -42,7 +45,7 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [10, 15] #
+    milestones: [7, 12] #
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
@@ -61,7 +64,7 @@ model_adversary:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [3]
+    milestones: [2, 4]
     gamma: 0.1
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
@@ -69,6 +72,6 @@ model_adversary:
 # trainer:
 #   # max_epochs:  50 #
 
-seed: 1200
+seed: 1234
 
 evaluate_method: "greedy"   #["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]
