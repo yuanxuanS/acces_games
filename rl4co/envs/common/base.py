@@ -159,8 +159,8 @@ class RL4COEnvBase(EnvBase):
         Generates the dataset if it does not exist, otherwise loads it from file
         """
         if filename is not None:
-            # log.info(f"Overriding dataset filename from {filename}")
-            pass
+            log.info(f"Overriding dataset filename from {filename}")
+
         f = getattr(self, f"{phase}_file") if filename is None else filename
         if f is None:
             if phase != "train":
