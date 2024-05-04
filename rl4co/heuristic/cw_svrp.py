@@ -8,7 +8,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 from rl4co.utils.heuristic_utils import convert_to_fit_npz
-
+import time
 class CW_svrp:
     def __init__(self, td) -> None:
         super().__init__()
@@ -215,6 +215,7 @@ class CW_svrp:
     
     def forward(self):
         
+        st = time.time()
         self.__node_data()
         self.__pairwise()
         self.__get_savings()
@@ -227,7 +228,7 @@ class CW_svrp:
             single_routes = [action for routes in single_routes for action in routes]       # actions with multiply depots
             self.routes.append(single_routes)
         
-        
+        et = time.time() - st
         rewards = self._get_reward(self.td, self.routes)     #[batch]
         mean_reward = rewards.mean()
         print('------CW-----')
@@ -236,8 +237,9 @@ class CW_svrp:
         routes = convert_to_fit_npz(self.routes)
         return {"routes":routes,
                 "rewards": rewards,
-                "mean reward": mean_reward
-            }  
+                "mean reward": mean_reward,
+                "time": et,
+            }
 
     def forward_single(self, i):
         '''

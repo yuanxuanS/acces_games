@@ -73,7 +73,8 @@ class LocalSearch_opsa:
         return {
             "solutions": routes,
             "real rewards": rewards,
-            "real mean reward": sum(rewards) / len(rewards)
+            "real mean reward": sum(rewards) / len(rewards),
+            "time": est - st,
         }
     
     def forward_single(self):

@@ -298,7 +298,8 @@ class LocalSearch1_csp:
         return {
             "routes": routes,
             "rewards": rewards,
-            "mean reward": sum(rewards) / len(rewards)
+            "mean reward": sum(rewards) / len(rewards),
+            "time": est-st
         }
     
     def forward_single(self, tour=None, stop_cost = -1e6):

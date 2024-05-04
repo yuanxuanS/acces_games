@@ -45,14 +45,15 @@ class TabuSearch_svrp:
             batch_costs_real.append(real_cost)        
         # print(f"best cost of all data are {batch_costs}")
         # print(f"real cost of all data are {batch_costs_real}")
-        
-        batch_solutions = convert_to_fit_npz(batch_solutions)
         time_end = time.time()
         print(f"time is {time_end - time_start}")
+        batch_solutions = convert_to_fit_npz(batch_solutions)
+        
         return {
             "routes": batch_solutions,
             "rewards": batch_costs_real,
-            "mean reward": sum(batch_costs_real) / len(batch_costs_real)
+            "mean reward": sum(batch_costs_real) / len(batch_costs_real),
+            "time": time_end - time_start,
         }
     
     

@@ -65,5 +65,5 @@ def evaluate_baseline(
     if save_results:
         print("Saving results to {}".format(save_fname))
         np.savez(save_fname, **retvals)
-    print("mean reward is ",retvals["mean reward"])
+    print(f"mean reward is {retvals['mean reward']}, time is {retvals['time']}")
     return retvals
