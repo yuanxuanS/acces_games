@@ -11,6 +11,8 @@ README.md
 *.txt
 /tmp_svrp
 /data
+*.jpg
+*.png
 # Logs
 /logs
 
