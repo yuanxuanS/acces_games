@@ -61,7 +61,7 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
         |-----  fill fill
         |fill fill fill
      '''
-    val_data = env.load_date(val_data_pth)
+    val_data = env.load_data(val_data_pth)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
@@ -109,25 +109,26 @@ def nash_solver(payoff):
     return first mixed equilibrium (may be multiple)
     returns a tuple of numpy arrays """
     game = nash.Game(payoff)
-    equilibria = game.lemke_howson_enumeration()
-    equilibrium = next(equilibria, None)
+    with np.errstate(invalid='raise'):
+        equilibria = game.lemke_howson_enumeration()
+        equilibrium = next(equilibria, None)
 
-    # Lemke-Howson couldn't find equilibrium OR
-    # Lemke-Howson return error - game may be degenerate. try other approaches
-    if equilibrium is None or (equilibrium[0].shape != (payoff.shape[0],) and equilibrium[1].shape != (payoff.shape[0],)):
-        # try other
-        print('\n\n\n\n\nuh oh! degenerate solution')
-        print('payoffs are\n', payoff)
-        equilibria = game.vertex_enumeration()
-        equilibrium = next(equilibria)
-        if equilibrium is None:
-            print('\n\n\n\n\nuh oh x2! degenerate solution again!!')
+        # Lemke-Howson couldn't find equilibrium OR
+        # Lemke-Howson return error - game may be degenerate. try other approaches
+        if equilibrium is None or (equilibrium[0].shape != (payoff.shape[0],) and equilibrium[1].shape != (payoff.shape[0],)):
+            # try other
+            print('\n\n\n\n\nuh oh! degenerate solution')
             print('payoffs are\n', payoff)
-            equilibria = game.support_enumeration()
+            equilibria = game.vertex_enumeration()
             equilibrium = next(equilibria)
+            if equilibrium is None:
+                print('\n\n\n\n\nuh oh x2! degenerate solution again!!')
+                print('payoffs are\n', payoff)
+                equilibria = game.support_enumeration()
+                equilibrium = next(equilibria)
 
-    assert equilibrium is not None
-    return equilibrium
+        assert equilibrium is not None
+        return equilibrium
 
 
 class Protagonist:
@@ -475,6 +476,8 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
     """
+    if cfg.get("seed"):
+        L.seed_everything(cfg.seed, workers=True)
     # trainer.logger = logger
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
