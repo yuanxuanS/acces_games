@@ -15,7 +15,7 @@ from rl4co.models.zoo.am import AttentionModelPolicy
 from rl4co.models.rl.common.critic import CriticNetwork
 from rl4co.model_adversary.zoo.ppo.policy_conti import PPOContiAdvPolicy
 from rl4co.data.generate_data import generate_default_datasets, generate_dataset
-
+from rl4co.tasks.eval_heuristic import evaluate_baseline_withpsroadv
 from rl4co.model_adversary import PPOContiAdvModel
 
 from rl4co import utils
@@ -26,6 +26,7 @@ import numpy as np
 import random
 import nashpy as nash
 import os
+import time
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -61,7 +62,7 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
         |-----  fill fill
         |fill fill fill
      '''
-    val_data = env.load_data(val_data_pth)
+    val_data = env.load_date(val_data_pth)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
@@ -109,26 +110,25 @@ def nash_solver(payoff):
     return first mixed equilibrium (may be multiple)
     returns a tuple of numpy arrays """
     game = nash.Game(payoff)
-    with np.errstate(invalid='raise'):
-        equilibria = game.lemke_howson_enumeration()
-        equilibrium = next(equilibria, None)
+    equilibria = game.lemke_howson_enumeration()
+    equilibrium = next(equilibria, None)
 
-        # Lemke-Howson couldn't find equilibrium OR
-        # Lemke-Howson return error - game may be degenerate. try other approaches
-        if equilibrium is None or (equilibrium[0].shape != (payoff.shape[0],) and equilibrium[1].shape != (payoff.shape[0],)):
-            # try other
-            print('\n\n\n\n\nuh oh! degenerate solution')
+    # Lemke-Howson couldn't find equilibrium OR
+    # Lemke-Howson return error - game may be degenerate. try other approaches
+    if equilibrium is None or (equilibrium[0].shape != (payoff.shape[0],) and equilibrium[1].shape != (payoff.shape[0],)):
+        # try other
+        print('\n\n\n\n\nuh oh! degenerate solution')
+        print('payoffs are\n', payoff)
+        equilibria = game.vertex_enumeration()
+        equilibrium = next(equilibria)
+        if equilibrium is None:
+            print('\n\n\n\n\nuh oh x2! degenerate solution again!!')
             print('payoffs are\n', payoff)
-            equilibria = game.vertex_enumeration()
+            equilibria = game.support_enumeration()
             equilibrium = next(equilibria)
-            if equilibrium is None:
-                print('\n\n\n\n\nuh oh x2! degenerate solution again!!')
-                print('payoffs are\n', payoff)
-                equilibria = game.support_enumeration()
-                equilibrium = next(equilibria)
 
-        assert equilibrium is not None
-        return equilibrium
+    assert equilibrium is not None
+    return equilibrium
 
 
 class Protagonist:
@@ -208,13 +208,6 @@ class Protagonist:
         for i in range(len(self.policies)):
             torch.save(self.policies[i].state_dict(), f=pth_dir+"progPolicy_"+str(i)+".pth")
     
-    def save_a_model_weights(self, pth_dir, i, policy):
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        torch.save(policy.state_dict(), f=pth_dir+"progPolicy_"+str(i)+".pth")
-    
-
     def load_model_weights(self, load_dir):
         # 加载到policies中
         
@@ -308,6 +301,7 @@ class Adversary:
         self.policies = []
         self.correspond_critic = []
         self.strategy = []
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     def get_a_policy(self):
         return self.policy(self.env.name), self.critic(self.env.name)
@@ -395,23 +389,6 @@ class Adversary:
             torch.save(self.policies[i].state_dict(), f=pth_dir_policy+"adverPolicy_"+str(i)+".pth")
             torch.save(self.correspond_critic[i].state_dict(), f=pth_dir_critic+"adverCritic_"+str(i)+".pth")
     
-    def save_a_model_weights(self, pth_dir, i, policy, critic):
-
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        pth_dir_policy = pth_dir+"_policy/"
-        if not os.path.exists(pth_dir_policy):
-            os.mkdir(pth_dir_policy)
-
-        pth_dir_critic = pth_dir+"_critic/"
-        if not os.path.exists(pth_dir_critic):
-            os.mkdir(pth_dir_critic)
-
-        torch.save(policy.state_dict(), f=pth_dir_policy+"adverPolicy_"+str(i)+".pth")
-        torch.save(critic.state_dict(), f=pth_dir_critic+"adverCritic_"+str(i)+".pth")
-    
-
     def load_model_weights(self, load_dir):
         # 加载到policies中
         load_dir_policy = load_dir + "_policy/"
@@ -420,7 +397,7 @@ class Adversary:
         assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
         for policy in policies:
             policy_w = torch.load(load_dir_policy+policy)
-            tmp_policy = self.policy(self.env.name)
+            tmp_policy = self.policy(self.env.name).to(self.device)
             tmp_policy.load_state_dict(policy_w)
             self.policies.append(tmp_policy)
 
@@ -428,7 +405,7 @@ class Adversary:
         critics = os.listdir(load_dir_critic)
         for critic in critics:
             critic_w = torch.load(load_dir_critic+critic)
-            tmp_critic = self.critic(self.env.name)
+            tmp_critic = self.critic(self.env.name).to(self.device)
             tmp_critic.load_state_dict(critic_w)
             self.correspond_critic.append(tmp_critic)
 
@@ -489,7 +466,7 @@ def sample_strategy(distrib):
 
 @utils.task_wrapper
 # @profile(stream=open('log_mem_cvrp50.log', 'w+'))
-def run(cfg: DictConfig) -> Tuple[dict, dict]:
+def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
     """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
     This method is wrapped in optional @task_wrapper decorator, that controls the behavior during
@@ -515,170 +492,22 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info(f"Instantiating environment <{cfg.env._target_}>")
     env = hydra.utils.instantiate(cfg.env)
 
-    # if self.data_cfg["generate_data"]:
     data_cfg = {
             "val_data_size": cfg.model_psro.val_data_size,
             "test_data_size": cfg.model_psro.test_data_size,
         }
     generate_default_datasets(data_dir=cfg.paths.data_dir, data_cfg=data_cfg)
-    # generate_dataset(data_dir=cfg.env.data_dir, dataset_size=data_cfg["val_data_size"],name="val", problem=cfg.env.name, seed=4321)
-    # generate_dataset(data_dir=cfg.env.data_dir, dataset_size=data_cfg["test_data_size"], name="test", problem=cfg.env.name, seed=1234)
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # 改：分别构建 prog, adv的算法model，for r c 遍历只需要重新load网络model
     protagonist_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
+    protagonist_model = protagonist_model.to(device)
     # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
     adversary_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
-        
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if cfg.get("train"):
-
-        try:
-            val_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
-            val_data = env.load_data(val_data_pth)
-
-        
-            # 各自初始化1个policy
-            protagonist = Protagonist(AttentionModel, AttentionModelPolicy, env)
-            adversary = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
+    adversary_model = adversary_model.to(device)
     
-            protagonist.add_policy(protagonist.get_a_policy())
-            policy_, critic_ = adversary.get_a_policy()
-            adversary.add_policy(policy_, critic_)
-            # 分别训练两个agent的初始policy
-            protagonist.strategy = [1.]
-            adversary.strategy = [1.]
-        
-    
-            ## 计算初始payoff矩阵: row-prota, col-adver
-            
-            # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
-            
-            # 计算出来的bs的reward
-            # protagonist.policies[0], prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger)
-            if cfg.load_prog_from_path:
-                tmp_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
-                tmp_model = tmp_model.load_from_checkpoint(cfg.load_prog_from_path)
-                protagonist.policies[0] = tmp_model.policy
-            protagonist_model.policy = protagonist.get_policy_i(0)
-            # prog_bs_reward = play_game(env, protagonist_model, adversary_model)
-            # 
-            # adversary.policies[0], adversary.correspond_critic[0], adver_bs_reward = adversary.get_best_response(protagonist,
-            #                                                                                                       cfg, callbacks, logger)
 
-
-            payoff_prot = []
-            row_payoff = []
-            protagonist_model.policy = protagonist.get_policy_i(0)
-            adversary_model.policy, adversary_model.critic = adversary.get_policy_i(0)
-
-            
-            td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-            payoff = play_game(env, td_init, protagonist_model, adversary_model)
-            row_payoff.append(payoff)
-            payoff_prot.append(row_payoff)
-
-            # compute nashconv
-            utility_1 = payoff
-            utility_2 = -payoff
-            nashconv_lst = []
-
-            # tmp
-            prog_br_lst = []
-            adver_br_lst = []
-
-            # 
-            # 存payoff表，两agent的strategy
-            save_payoff_pth = logger[0].save_dir+'/psro/'
-            if not os.path.exists(save_payoff_pth):
-                os.mkdir(save_payoff_pth)
-
-            print("init payoff:", payoff_prot)
-            print(protagonist.policy_number)
-            iter_reward = []
-            iterations = cfg.iters
-            epsilon = cfg.epsilon      # prog, adver的bs差距阈值，小于判断为 均衡
-            for e in range(iterations):
-
-                log.info(f" psro training epoch {e}")
-                bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger, epoch=e)
-                protagonist.add_policy(bs_adversary)
-                utility_1_br = prog_bs_reward
-                prog_br_lst.append(prog_bs_reward)
-                protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e, bs_adversary)
-
-                bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
-                adversary.add_policy(bs_protagonist, bs_protagonist_critic)
-                utility_2_br = -adver_bs_reward
-                adver_br_lst.append(adver_bs_reward)
-                adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", e, bs_protagonist, bs_protagonist_critic)
-
-                # 判断是否达到平衡
-                if abs(prog_bs_reward - adver_bs_reward) < epsilon:
-                    print(f"get equalibium in {e} epoch !!! prog reward:{prog_bs_reward}, adver reward:{adver_bs_reward}")
-                    # break
-                else:
-                    print(f"curr prog reward: {prog_bs_reward}, curr adver reward:{adver_bs_reward} in epoch {e}")
-
-                # compute nashconv
-                nashconv = utility_1_br - utility_1 + utility_2_br - utility_2
-                nashconv_lst.append(nashconv)
-
-                # 更新新加入policy的payoff矩阵
-                row_range = [protagonist.policy_number - 1]
-                col_range = range(adversary.policy_number)
-                update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
-                
-                row_range = range(protagonist.policy_number -1)
-                col_range = [adversary.policy_number - 1]
-                update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
-
-                
-
-                ## 根据payoff, 求解现在的nash eq,得到player’s strategies
-                # payoff_prot = [[0.5, 0.6], [0.1, 0.9]]
-                eq = nash_solver(np.array(payoff_prot))
-                print(eq)
-                protagonist_strategy, adversary_strategy = eq
-                # print(protagonist_strategy)
-                protagonist.update_strategy(protagonist_strategy)
-                adversary.update_strategy(adversary_strategy)
-
-                # 测试现在的reward
-                curr_reward = eval(payoff_prot, protagonist.strategy, adversary.strategy)
-                iter_reward.append(curr_reward)
-                log.info(f"curr reward is {curr_reward}")
-
-                # update utility
-                utility_1 = curr_reward
-                utility_2 = -curr_reward
-
-                
-                np.savez(save_payoff_pth+ 'info.npz', 
-                    payoffs=payoff_prot,       # key=value
-                    iter_reward=iter_reward,
-                    nashconv_lst=nashconv_lst,     # nashconv
-                    prog_br_lst=prog_br_lst,
-                    adver_br_lst=adver_br_lst,
-                    adver_strategy=adversary.strategy,
-                    prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
-
-            
-        
-        except Exception as e:
-            print(f"error :{e}")
-
-        finally:        # 
-            protagonist.save_model_weights(logger[0].save_dir+"/models_weights/")   # logger是list
-            adversary.save_model_weights(logger[0].save_dir+"/models_weights")
-            
-            print("adver strategy: ", adversary.strategy)
-            print("prog strategy: ", protagonist.strategy)
-            print("final payoff", payoff_prot)
-            print("iteration reward", iter_reward)
-
-        
-
-    if cfg.get("evaluate"):
+    if cfg.get("eval_otherprog_with_psroadv"):
         # 加载psro prog和adver
         
         protagonist_tmp = Protagonist(AttentionModel, AttentionModelPolicy, env)
@@ -694,43 +523,67 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         # load 对应环境的test数据
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         test_data = env.load_data(test_data_pth)
-        # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
         
-        payoff_eval = []
-        if cfg.get("eval_withadv"):
-            # 有adver的eval
-            print("eval with adversary")
-            for r in range(protagonist_tmp.policy_number):
-                protagonist_model.policy = protagonist_tmp.get_policy_i(r)
-                payoff_diff_adv = []
-                for c in range(adversary_tmp.policy_number):
+        payoff_underadv_rl = []
+        if cfg.get("eval_rl_prog"):
+            # 
+            print("eval rl agent with psro-adversary")
+            
+            rl_prog_pth = cfg.rl_prog_pth
+            protagonist_model = protagonist_model.load_from_checkpoint(rl_prog_pth)
+            st = time.time()
+            for c in range(adversary_tmp.policy_number):
 
-                    adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
-                    td_init = env.reset(test_data.clone()).to(device)
-                    payoff = play_game(env, td_init, protagonist_model, adversary_model)
-                    payoff_diff_adv.append(payoff)
-                    print(f"r,c :{r},{c}")
-                payoff_eval.append(payoff_diff_adv)
-                
-            reward_eval = eval(payoff_eval, prog_strategy, adver_strategy)
-            save_eval_pth = "eval_withadv.npz"
-        else:
-            # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
-            print("eval without adversary")
-            for i in range(protagonist_tmp.policy_number):
-                protagonist_model.policy = protagonist_tmp.get_policy_i(i)
+                adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
+                # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
                 td_init = env.reset(test_data.clone()).to(device)
-                payoff = play_game(env, td_init, protagonist_model, None)
-                payoff_eval.append(payoff)
-            reward_eval = eval_noadver(payoff_eval, prog_strategy)
-            save_eval_pth = "eval_withoutadv.npz"
-        print(f"eval reward: {reward_eval}")
-        np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+                payoff = play_game(env, td_init, protagonist_model, adversary_model)
+                payoff_underadv_rl.append(payoff)
+                print(f"c :{c}")
+                
+            reward_eval = eval_oneprog_adv(payoff_underadv_rl, adver_strategy)
+            eval_time = time.time() - st
+            print(f"reward is {reward_eval}, eval time of rl is {eval_time} s")
+
+            save_eval_pth = "eval_rl_withadv.npz"
+
+            np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+                        rl_pth=rl_prog_pth,
+                        eval_reward=reward_eval,
+                        eval_time=eval_time,
+                        eval_payoffs=payoff_underadv_rl,       # key=value
+                        eval_data=test_data_pth,
+                        eval_adver_strategy=adver_strategy)  # 保
+        
+        payoff_underadv_baseline = []
+        if cfg.get("eval_baseline_prog"):
+            # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
+            print("eval baseline with psro-adversary")
+            prog_baseline = cfg.baseline_heur
+            # baseline计算时间长，仅计算概率不为0的
+            support_adv_stra_idx = [i for i, x in enumerate(adver_strategy) if x>0]
+            support_adv_stra = [x for i, x in enumerate(adver_strategy) if x>0]
+            print(support_adv_stra)
+            st = time.time()
+            for adv_idx in support_adv_stra_idx:
+                adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(adv_idx)
+                # td_init = env.reset(test_data.clone()).to(device)
+                payoff = evaluate_baseline_withpsroadv(env, test_data_pth, prog_baseline, adversary_model, save_results=False)
+                payoff_underadv_baseline.append(payoff["mean reward"].item())
+            reward_eval = eval_oneprog_adv(payoff_underadv_baseline, support_adv_stra)
+            eval_time = time.time()-st 
+            print(f"reward is {reward_eval}, eval time of baseline:{prog_baseline} is {eval_time} s")
+            save_eval_pth = "eval_baseline_"+prog_baseline+"_withadv.npz"
+
+            np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+                    baseline=prog_baseline,
                     eval_reward=reward_eval,
-                    eval_payoffs=payoff_eval,       # key=value
+                    eval_time=eval_time,
+                    eval_payoffs=payoff_underadv_baseline,       # key=value
                     eval_data=test_data_pth,
                     eval_adver_strategy=adver_strategy,
-                    eval_prog_strategy=prog_strategy)  # 保
+                    support_adv=support_adv_stra,
+                    support_adv_idx=support_adv_stra_idx)  # 保
     return None, None
     
 def eval_noadver(payoff, prog_strategy):
@@ -742,16 +595,23 @@ def eval_noadver(payoff, prog_strategy):
     result = rps[prog_strategy, 1]
     return result[0]
 
+def eval_oneprog_adv(payoff, adver_strategy):
+    '''
+    根据strategy和payoff表得到, 无adver下
+    '''
+    A = np.array(payoff)
+    rps = nash.Game(A)
+    result = rps[1, adver_strategy]
+    return result[0]
 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="main_psro_frame.yaml")
-def train_psro(cfg: DictConfig) -> Optional[float]:
+def eval_other_withpsro_adv(cfg: DictConfig) -> Optional[float]:
     # apply extra utilities
     # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
-    print("this is in psro train")
     utils.extras(cfg)
 
     # train the model
-    run(cfg)
+    eval_withpsroadv(cfg)
 
     # # safely retrieve metric value for hydra-based hyperparameter optimization
     # metric_value = utils.get_metric_value(
@@ -763,4 +623,4 @@ def train_psro(cfg: DictConfig) -> Optional[float]:
 
 
 if __name__ == "__main__":
-    train_psro()
+    eval_other_withpsro_adv()

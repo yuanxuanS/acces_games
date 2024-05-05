@@ -31,7 +31,7 @@ STOCH_PARAMS = {
     2: [0.8, 0.,  0.2],
     3: [0.4, 0.3, 0.3]
 }
-STOCH_IDX = 3
+STOCH_IDX = 0
 
 def generate_env_data(env_type, *args, **kwargs):
     """Generate data for a given environment type in the form of a dictionary"""

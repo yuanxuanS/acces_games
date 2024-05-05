@@ -4,7 +4,7 @@
 root_dir: ${oc.env:PROJECT_ROOT}
 
 # stochastic model idx
-stoch_idx: 3
+stoch_idx: 0
 # path to data directory
 data_dir: ${paths.root_dir}/data${paths.stoch_idx}/
 

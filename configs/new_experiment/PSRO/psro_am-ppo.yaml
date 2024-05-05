@@ -32,8 +32,8 @@ model_psro:
   test_batch_size: 1024 #10   #
   train_data_size: 640_000  #100  #
   val_data_size: 10_000  #
-  test_data_size: 10_000  #100 #
-
+  test_data_size: 100  #100 #
+  data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
@@ -47,6 +47,7 @@ model:
   lr_scheduler_kwargs:
     milestones: [7, 12] #
     gamma: 0.1
+  data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
@@ -66,6 +67,7 @@ model_adversary:
   lr_scheduler_kwargs:
     milestones: [2, 4]
     gamma: 0.1
+  data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 

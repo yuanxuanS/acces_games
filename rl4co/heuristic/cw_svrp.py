@@ -34,7 +34,7 @@ class CW_svrp:
         self.sorted_savings = None
         self.routes = list()
         self.capacity = 1        # define by env
-        self.print_enable = True
+        self.print_enable = False
         
     def __node_data(self):
         # get node data in coordinate (x,y) format from envs 
