@@ -56,9 +56,11 @@ class OPSAEnv(RL4COEnvBase):
         """
         
         if phase == "train":
-            filename = "/home/panpan/rl4co/data/opsa/opswtw_train.npz"
-        elif phase == "val" or "test":
-            filename = "/home/panpan/rl4co/data/opsa/opswtw_val.npz"
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_train.npz"
+        elif phase == "val":
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
+        elif phase == "test":
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test.npz"
         f = filename
         log.info(f"Loading {phase} dataset from {f}")
         try:
@@ -101,12 +103,17 @@ class OPSAEnv(RL4COEnvBase):
         td_load.set("cost", cost)
         
         if "val" in fpath:  # load other data for valand test
-            part_pth = "/home/panpan/rl4co/data/opsa/val_part_data.npz"
+            part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
             tmp = td_load_part["real_prob"]
             weather = td_load_part["weather"]
-            
+        elif "test" in fpath:
+            part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
+            td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
+            attack_prob = td_load_part["attack_prob"]
+            tmp = td_load_part["real_prob"]
+            weather = td_load_part["weather"]
         else:
             # part_pth = "/home/panpan/rl4co/data/opsa/train_part_data.npz"
             # weather
@@ -140,7 +147,7 @@ class OPSAEnv(RL4COEnvBase):
     
     def generate_data(self, batch_size) -> TensorDict:
         # 加载预先保存好的opsa 训练数据
-        data_pth = "/home/panpan/rl4co/data/opsa/opswtw_train.npz"
+        data_pth = "/home/panpan/rl4co/data/opsa/opsa"+str(self.num_loc)+"_train.npz"
 
         x_dict = self.load_data(data_pth, batch_size)
         whole_size = x_dict.batch_size[0]
