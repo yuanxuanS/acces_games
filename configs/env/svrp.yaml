@@ -1,7 +1,7 @@
 _target_: rl4co.envs.SVRPEnv
 name: svrp
 
-num_loc: 20
+num_loc: 50
 
 stoch_idx: ${paths.stoch_idx}   # for stoch model params
 data_dir: ${paths.root_dir}/data${paths.stoch_idx}/svrp

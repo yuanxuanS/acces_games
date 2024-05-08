@@ -13,6 +13,9 @@ README.md
 /data
 *.jpg
 *.png
+*.zip
+*.out
+*.sh
 # Logs
 /logs
 

@@ -334,7 +334,7 @@ class CSPEnv(RL4COEnvBase):
         '''
         # h = hpy().heap()
         A, B, G = CSPEnv.stoch_params[CSPEnv.stoch_idx]
-        print(f"ABG in csp is {A} {B} {G}")
+        # print(f"ABG in csp is {A} {B} {G}")
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
         else:
