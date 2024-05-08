@@ -17,6 +17,10 @@ from rl4co.model_adversary.zoo.ppo.policy_conti import PPOContiAdvPolicy
 from rl4co.data.generate_data import generate_default_datasets, generate_dataset
 
 from rl4co.model_adversary import PPOContiAdvModel
+from rl4co.data.dataset import TensorDictDataset
+from torch.utils.data import DataLoader
+from rl4co.data.dataset import tensordict_collate_fn
+
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
@@ -38,7 +42,7 @@ def play_game(env, td_init, prog, adver=None):
         adver: PPOContin model
     '''
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # td_init = env.reset(batch_size=[10]).to(device)
+    td_init = env.reset(td_init).to(device)
     prog_model = prog.to(device)
 
     if adver:
@@ -61,10 +65,14 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
         |-----  fill fill
         |fill fill fill
      '''
-    val_data = env.load_data(val_data_pth)
+    # val_data = env.load_data(val_data_pth)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
+    # td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
+    val_data = env.load_data(val_data_pth)
+    val_dataset = TensorDictDataset(val_data)
+    val_dl = DataLoader(val_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
+    
     # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
     protagonist_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
     # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
@@ -81,8 +89,12 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
         for c in col_range:
 
             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(c)
-            td_init = env.reset(val_data.clone()).to(device)
-            payoff = play_game(env, td_init, protagonist_model, adversary_model)
+            # td_init = env.reset(val_data.clone()).to(device)
+            # payoff = play_game(env, td_init, protagonist_model, adversary_model)
+
+            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model) for batch in val_dl])
+            payoff = rewards.mean().item()
+
             if r > orig_r - 1:
                 new_row_payoff.append(payoff)
             if c > orig_c -1 and r < orig_r -1:     # row新增行，包括c新增的一列
@@ -241,7 +253,7 @@ class Protagonist:
         elif epoch > 0 and epoch < 5:
             max_epoch = cfg.prog_epoch2  #20  # 
         else: 
-            max_epoch = 10
+            max_epoch = cfg.prog_epoch2
         
         # get protagonist's policy from strategy: adver用策略变化，prog更新policy
         cur_policy = self.get_curr_policy()     # sample a AttentionModel's policy
@@ -488,7 +500,7 @@ def sample_strategy(distrib):
 
 
 @utils.task_wrapper
-# @profile(stream=open('log_mem_cvrp50.log', 'w+'))
+@profile(stream=open('log_mem_svrp50_psro.log', 'w+'))
 def run(cfg: DictConfig) -> Tuple[dict, dict]:
     """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
@@ -535,7 +547,8 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         try:
             val_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
             val_data = env.load_data(val_data_pth)
-
+            val_dataset = TensorDictDataset(val_data)
+            val_dl = DataLoader(val_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
         
             # 各自初始化1个policy
             protagonist = Protagonist(AttentionModel, AttentionModelPolicy, env)
@@ -570,10 +583,14 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             row_payoff = []
             protagonist_model.policy = protagonist.get_policy_i(0)
             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(0)
-
+            # protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", 0, protagonist_model.policy)
+            # adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
+            
             
             td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-            payoff = play_game(env, td_init, protagonist_model, adversary_model)
+            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model) for batch in val_dl])
+            payoff = rewards.mean().item()
+            # payoff = play_game(env, batch, protagonist_model, adversary_model)
             row_payoff.append(payoff)
             payoff_prot.append(row_payoff)
 
@@ -604,13 +621,13 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 protagonist.add_policy(bs_adversary)
                 utility_1_br = prog_bs_reward
                 prog_br_lst.append(prog_bs_reward)
-                protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e, bs_adversary)
+                protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e+1, bs_adversary)
 
                 bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
                 adversary.add_policy(bs_protagonist, bs_protagonist_critic)
                 utility_2_br = -adver_bs_reward
                 adver_br_lst.append(adver_bs_reward)
-                adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", e, bs_protagonist, bs_protagonist_critic)
+                adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", e+1, bs_protagonist, bs_protagonist_critic)
 
                 # 判断是否达到平衡
                 if abs(prog_bs_reward - adver_bs_reward) < epsilon:
@@ -632,7 +649,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 col_range = [adversary.policy_number - 1]
                 update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
 
-                
+                print(f"payoff_prot: {payoff_prot}")
 
                 ## 根据payoff, 求解现在的nash eq,得到player’s strategies
                 # payoff_prot = [[0.5, 0.6], [0.1, 0.9]]
@@ -670,6 +687,15 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         finally:        # 
             protagonist.save_model_weights(logger[0].save_dir+"/models_weights/")   # logger是list
             adversary.save_model_weights(logger[0].save_dir+"/models_weights")
+            
+            np.savez(save_payoff_pth+ 'info.npz', 
+                    payoffs=payoff_prot,       # key=value
+                    iter_reward=iter_reward,
+                    nashconv_lst=nashconv_lst,     # nashconv
+                    prog_br_lst=prog_br_lst,
+                    adver_br_lst=adver_br_lst,
+                    adver_strategy=adversary.strategy,
+                    prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
             
             print("adver strategy: ", adversary.strategy)
             print("prog strategy: ", protagonist.strategy)
