@@ -129,8 +129,13 @@ class OPSAEnv(RL4COEnvBase):
             attack_prob[:, 0] = 0.
         
             # influence prize by attack prob
-            tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
-
+            # tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
+            tmp = self.get_stoch_var(attack_prob.to("cpu"),
+                                     locs.to("cpu"),
+                                     weather[:, None, :].
+                                     repeat(1, self.num_loc, 1).to("cpu"),
+                                     None).squeeze(-1).float().to(self.device)
+            tmp = torch.clamp(tmp, max=1.)
         
         
         tmp = tmp * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
