@@ -97,7 +97,7 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
             for batch in val_dl:
                 re, _ = play_game(env, batch.clone(), protagonist_model, adversary_model)
                 rewards.append(re)
-            payoff = rewards.mean().item()
+            payoff = torch.tensor(rewards).mean().item()
 
             if r > orig_r - 1:
                 new_row_payoff.append(payoff)
