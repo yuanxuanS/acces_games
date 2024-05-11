@@ -17,6 +17,10 @@ from rl4co.model_adversary.zoo.ppo.policy_conti import PPOContiAdvPolicy
 from rl4co.data.generate_data import generate_default_datasets, generate_dataset
 from rl4co.tasks.eval_heuristic import evaluate_baseline_withpsroadv
 from rl4co.model_adversary import PPOContiAdvModel
+from rl4co.data.dataset import TensorDictDataset
+from torch.utils.data import DataLoader
+from rl4co.data.dataset import tensordict_collate_fn
+
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
@@ -39,7 +43,7 @@ def play_game(env, td_init, prog, adver=None):
         adver: PPOContin model
     '''
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # td_init = env.reset(batch_size=[10]).to(device)
+    td_init = env.reset(td_init).to(device)
     prog_model = prog.to(device)
 
     if adver:
@@ -51,8 +55,9 @@ def play_game(env, td_init, prog, adver=None):
     ret = prog_model(td)
     mean_reward = ret["reward"].mean().item()   # return scalar
     # print(mean_reward)
-    reward = mean_reward
-    return reward
+    
+
+    return mean_reward, ret["reward"]
 
 def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range):
     '''
@@ -139,6 +144,7 @@ class Protagonist:
         self.policies = []
         self.correspond_baseline = []
         self.strategy = []
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     def get_a_policy(self):
         return self.policy(self.env.name)
@@ -214,12 +220,12 @@ class Protagonist:
         models = os.listdir(load_dir)
         log.info(f"{len(models)} policies to be loaded now.")
         assert len(self.policies) == 0, "polices are not empty but load more polices!"
-        for model in models:
-            model_w = torch.load(load_dir+model)
+        for i in range(len(models)):
+            model_w = torch.load(load_dir+"progPolicy_"+str(i)+".pth")
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(model_w)
             
-            self.policies.append(tmp_policy)
+            self.policies.append(tmp_policy.to(self.device))
         
 
     def get_best_response(self, adversary, cfg, callbacks, logger, epoch, init=False):
@@ -394,20 +400,24 @@ class Adversary:
         load_dir_policy = load_dir + "_policy/"
         policies = os.listdir(load_dir_policy)
         log.info(f"{len(policies)} policies to be loaded now.")
-        assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
-        for policy in policies:
-            policy_w = torch.load(load_dir_policy+policy)
-            tmp_policy = self.policy(self.env.name).to(self.device)
+        # assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
+        if not len(self.policies) == 0:
+            print("reload adv from ", load_dir)
+            self.policies = []
+            self.correspond_critic = []
+        length = len(policies)
+        for i in range(length):
+            policy_w = torch.load(load_dir_policy+"adverPolicy_"+str(i)+".pth")
+            tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(policy_w)
-            self.policies.append(tmp_policy)
+            self.policies.append(tmp_policy.to(self.device))
 
         load_dir_critic = load_dir + "_critic/"
-        critics = os.listdir(load_dir_critic)
-        for critic in critics:
-            critic_w = torch.load(load_dir_critic+critic)
-            tmp_critic = self.critic(self.env.name).to(self.device)
+        for i in range(length):
+            critic_w = torch.load(load_dir_critic+"adverCritic_"+str(i)+".pth")
+            tmp_critic = self.critic(self.env.name)
             tmp_critic.load_state_dict(critic_w)
-            self.correspond_critic.append(tmp_critic)
+            self.correspond_critic.append(tmp_critic.to(self.device))
 
     def get_best_response(self, protagonist, cfg, callbacks, logger):
         '''
@@ -511,11 +521,11 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         # 加载psro prog和adver
         
         protagonist_tmp = Protagonist(AttentionModel, AttentionModelPolicy, env)
-        protagonist_tmp.load_model_weights(cfg.evaluate_savedir+"/models_weights/")
+        protagonist_tmp.load_model_weights(cfg.evaluate_adv_dir+"/models_weights/")
         adversary_tmp = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
-        adversary_tmp.load_model_weights(cfg.evaluate_savedir+"/models_weights")
+        adversary_tmp.load_model_weights(cfg.evaluate_adv_dir+"/models_weights")
 
-        data = np.load(cfg.npz_pth)  # 加载
+        data = np.load(cfg.adv_npz_pth)  # 加载
         payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
         prog_strategy = data['prog_strategy']
@@ -523,7 +533,9 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         # load 对应环境的test数据
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         test_data = env.load_data(test_data_pth)
-        
+        test_dataset = TensorDictDataset(test_data)
+        test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
         payoff_underadv_rl = []
         if cfg.get("eval_rl_prog"):
             # 
@@ -532,24 +544,44 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             rl_prog_pth = cfg.rl_prog_pth
             protagonist_model = protagonist_model.load_from_checkpoint(rl_prog_pth)
             st = time.time()
-            for c in range(adversary_tmp.policy_number):
+            length = min(adversary_tmp.policy_number, len(adver_strategy))
+            rewards_whole_g = None
+            for c in range(length):
 
                 adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
                 # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-                td_init = env.reset(test_data.clone()).to(device)
-                payoff = play_game(env, td_init, protagonist_model, adversary_model)
+                # td_init = env.reset(test_data.clone()).to(device)
+                rewards = []
+                rewards_all = None
+                for batch in test_dl:
+                    re, re_allg = play_game(env, batch.clone(), protagonist_model, adversary_model)
+                    rewards.append(re)
+                    if rewards_all == None:
+                        rewards_all = re_allg
+                    else:
+                        rewards_all = torch.cat((rewards_all, re_allg), dim=0)
+                payoff = torch.tensor(rewards).mean().item()
                 payoff_underadv_rl.append(payoff)
                 print(f"c :{c}")
-                
+                # 每张图上的psro-adv下的reward
+                if rewards_whole_g == None:
+                    rewards_whole_g = rewards_all[:, None]
+                else:
+                    rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
+
             reward_eval = eval_oneprog_adv(payoff_underadv_rl, adver_strategy)
+            rewards_graphs = eval_oneprog_adv_allgraph(rewards_whole_g[:, None].cpu().numpy(), adver_strategy)
+            eval_var = rewards_graphs.var()
+
             eval_time = time.time() - st
-            print(f"reward is {reward_eval}, eval time of rl is {eval_time} s")
+            print(f"reward mean is {reward_eval}, var is {eval_var}, eval time of rl is {eval_time} s")
 
             save_eval_pth = "eval_rl_withadv.npz"
 
-            np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+            np.savez(cfg.evaluate_adv_dir+ '/'+save_eval_pth, 
                         rl_pth=rl_prog_pth,
                         eval_reward=reward_eval,
+                        eval_var=eval_var,
                         eval_time=eval_time,
                         eval_payoffs=payoff_underadv_rl,       # key=value
                         eval_data=test_data_pth,
@@ -565,19 +597,29 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             support_adv_stra = [x for i, x in enumerate(adver_strategy) if x>0]
             print(support_adv_stra)
             st = time.time()
+            rewards_whole_g = None
             for adv_idx in support_adv_stra_idx:
                 adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(adv_idx)
                 # td_init = env.reset(test_data.clone()).to(device)
                 payoff = evaluate_baseline_withpsroadv(env, test_data_pth, prog_baseline, adversary_model, save_results=False)
                 payoff_underadv_baseline.append(payoff["mean reward"].item())
+                rewards = torch.tensor(payoff["rewards"]) if isinstance(payoff["rewards"], list) else payoff["rewards"]
+                if rewards_whole_g == None:
+                    rewards_whole_g = rewards
+                else:
+                    rewards_whole_g = torch.cat((rewards_whole_g, rewards), dim=0)
             reward_eval = eval_oneprog_adv(payoff_underadv_baseline, support_adv_stra)
+            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.test_data_size, len(support_adv_stra))
+            rewards_graphs = eval_oneprog_adv_allgraph(rewards_whole_g[:, None].cpu().numpy(), support_adv_stra)
+            var_eval = rewards_graphs.var()
             eval_time = time.time()-st 
-            print(f"reward is {reward_eval}, eval time of baseline:{prog_baseline} is {eval_time} s")
+            print(f"reward mean is {reward_eval}, var is {var_eval}, eval time of baseline:{prog_baseline} is {eval_time} s")
             save_eval_pth = "eval_baseline_"+prog_baseline+"_withadv.npz"
 
-            np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+            np.savez(cfg.evaluate_adv_dir+ '/'+save_eval_pth, 
                     baseline=prog_baseline,
                     eval_reward=reward_eval,
+                    var_eval=var_eval,
                     eval_time=eval_time,
                     eval_payoffs=payoff_underadv_baseline,       # key=value
                     eval_data=test_data_pth,
@@ -594,6 +636,14 @@ def eval_noadver(payoff, prog_strategy):
     rps = nash.Game(A)
     result = rps[prog_strategy, 1]
     return result[0]
+
+def eval_oneprog_adv_allgraph(rewards_graph, adv_strategy):
+    '''
+    rewards_graph: numpy array, shape:(graph_nums, adv_policy_Num)
+    adv_strategy: numpy array, shape:(adv_policy_Num)
+    '''
+    reward_adv_graphs = np.matmul(rewards_graph, np.array(adv_strategy))
+    return reward_adv_graphs
 
 def eval_oneprog_adv(payoff, adver_strategy):
     '''

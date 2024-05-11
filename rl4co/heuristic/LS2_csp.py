@@ -139,9 +139,13 @@ class LocalSearch2_csp:
         return improve, tour
 
     def perturbation_process(self, tour, ids):
+        """
+        """
         for i in range(self.K):
             # nodes_not_selected = np.setdiff1d(ids, tour)
             nodes_not_selected = torch.tensor([idx for idx in ids if idx not in tour])
+            if nodes_not_selected.shape[0] == 0:
+                break
             # node = np.random.choice(nodes_not_selected)
             probs = torch.ones(1)
             samples = torch.multinomial(probs, num_samples=1, replacement=False).to("cpu")
@@ -238,7 +242,7 @@ class LocalSearch2_csp:
         for i in range(self.batch_size):
             print(f"search for data {i}")
             cost, solution = self.forward_single()
-            print(solution)
+            # print(solution)
             self.instance_idx += 1
             rewards.append(cost)
             routes.append(solution)
@@ -248,10 +252,16 @@ class LocalSearch2_csp:
 
         routes = convert_to_fit_npz(routes)
 
+        mean_ = sum(rewards) / len(rewards)
+        squared_deviations = [(value - mean_) ** 2 for value in rewards]
+        var_ = sum(squared_deviations) / len(rewards)
+
+
         return {
             "routes": routes,
             "rewards": rewards,
             "mean reward": sum(rewards) / len(rewards),
+            "var reward": var_,
             "time": est-st
         }
 
@@ -259,7 +269,7 @@ class LocalSearch2_csp:
 
         if tour is None:
             tour = self.init_solution()
-            print("Initial Solution!!")
+            # print("Initial Solution!!")
 
         ids = torch.arange(0, self.num_loc)
 
