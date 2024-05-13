@@ -10,9 +10,9 @@ defaults:
 # psro params
 iters: 30
 epsilon: 0.01
-prog_epoch1: 15
-prog_epoch2: 10
-adver_epoch: 5
+prog_epoch1: 30
+prog_epoch2: 20
+adver_epoch: 20
 
 env:
   num_loc: 50
@@ -45,13 +45,17 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [7, 12] #
+    milestones: [10, 17, 22] #
     gamma: 0.1
   data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: /home/u2021141179/rl4co_cp/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
+load_prog_from_path:  /home/u2021141179/rl4co_cp/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
+# /home/u2021141179/rl4co_cp/logs/train/runs/opsa50/am-opsa50/2024-05-08_05-17-10/rl4co/j8nwkpj1/checkpoints/epoch=99-step=125000.ckpt
+
+# opsa20
+#/home/u2021141179/rl4co_cp/logs/train/runs/opsa20/am-opsa20/2024-05-08_09-14-24/rl4co/cks8a5wy/checkpoints/epoch=99-step=125000.ckpt
 
 # svrp20
 #/home/u2021141179/rl4co_cp/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt
@@ -83,6 +87,6 @@ model_adversary:
 # trainer:
 #   # max_epochs:  50 #
 
-seed: 1234
+seed: 3
 
 evaluate_method: "greedy"   #["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]

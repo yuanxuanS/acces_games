@@ -231,14 +231,16 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
         
     return out
 
-generate_and_save_stoch_data(10000, 20)
+# generate_and_save_stoch_data(10000, 20)
 # process_swtwtsp_data(0) # 先将所有数据每80000条分别存下来
 # generate_opswtw_data(1280000)
 # concat_npz_data(0)
 
-# td = load_npz_to_tensordict("/home/panpan/rl4co/data0/opsa/opsa20_test.npz")
+td = load_npz_to_tensordict("/home/u2021141179/rl4co_cp/data0/opsa/opsa20_test_part_data.npz")
 # print(len(dict(td)["locs"]))
-# print(dict(td)["locs"][0,:10])
+# print(dict(td))
+print(dict(td)["real_prob"][0,:10])
+print(dict(td)["attack_prob"][0,:10])
 # print(td["maxtime"].max(), td["tw_high"].max())
 # print(td.batch_size, td.keys())
 # generate_stochastoc_factor()
