@@ -413,12 +413,12 @@ class OPSAEnv(RL4COEnvBase):
         # 所有的prize+ penalty（<0）
         reward = td["curr_cost"] + td["penalty"]
         # 有attack但是未拜访的
-        batch_size = td.batch_size[0]
-        undefend = torch.ones((batch_size, self.num_loc), device=td.device, dtype=torch.bool)
-        row_idx = torch.range(0, td.batch_size[0]-1)[:, None].repeat(1, actions.shape[-1]).int()
-        undefend[row_idx, actions] = False # batch_size, num_loc
-        costs = (td["stochastic_cost"]* undefend).sum(-1)        # batch, 
-        reward -= costs
+        # batch_size = td.batch_size[0]
+        # undefend = torch.ones((batch_size, self.num_loc), device=td.device, dtype=torch.bool)
+        # row_idx = torch.range(0, td.batch_size[0]-1)[:, None].repeat(1, actions.shape[-1]).int()
+        # undefend[row_idx, actions] = False # batch_size, num_loc
+        # costs = (td["stochastic_cost"]* undefend).sum(-1)        # batch, 
+        # reward -= costs
         return reward
 
     
