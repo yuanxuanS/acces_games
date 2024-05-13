@@ -8,11 +8,12 @@ from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 from rl4co.utils.heuristic_utils import convert_to_fit_npz
+from memory_profiler import profile
 
 import time
 import random
 from .LS_2opt_csp import LS_csp_2opt
-
+import math
 class LocalSearch2_csp:
     def __init__(self, td) -> None:
         super().__init__()
@@ -49,6 +50,7 @@ class LocalSearch2_csp:
         self.J=150
         self.T=10
         self.K=10
+        self.search_iters = 30
         self.print_if = False
     def init_solution(self):
         '''
@@ -103,7 +105,7 @@ class LocalSearch2_csp:
             # tour = np.insert(del_tour, del_pos, node)
             tour_insert = del_tour.clone().tolist()
             tour_insert.insert(del_pos, node)
-            tour_insert = torch.tensor(tour_insert)
+            tour_insert = torch.tensor(tour_insert, dtype=torch.int32)
             cost_now = self.dist(tour_insert)
             if cost_now<ori_cost:
                 if self.check_cover(tour_insert):
@@ -154,7 +156,7 @@ class LocalSearch2_csp:
             # tour = np.insert(tour, best_pos, node)
             tour_insert = tour.clone().tolist()
             tour_insert.insert(best_pos, node)
-            tour = torch.tensor(tour_insert)
+            tour = torch.tensor(tour_insert, dtype=torch.int32)
         return tour
 
     def best_add_position(self, tour, node):
@@ -166,7 +168,7 @@ class LocalSearch2_csp:
         for pos in range(1, tour.shape[0]):     # 不能插入在depot处
             tour_insert = tour.clone().tolist()
             tour_insert.insert(pos, node)
-            tour_insert = torch.tensor(tour_insert)
+            tour_insert = torch.tensor(tour_insert, dtype=torch.int32)
             dist_increase = self.dist(tour_insert) - dist_ori
             if dist_increase<minmum_increase:
                 best_pos = pos
@@ -219,21 +221,31 @@ class LocalSearch2_csp:
 
         return dists.argsort()[torch.sort(dists)[0] <= radius]
     
-
+    # @profile(stream=open('log_mem_csp_LS2_perm.log', 'w+'))
     def add_uncovered_nodes(self, end_of_tour, uncovered):
         '''
             先按照最短路径加上uncovered节点
             加一个后更新uncovered，如果提前都覆盖就停止再加节点
         '''
-        from itertools import permutations
-        permuts = list(permutations(uncovered))
-        permuts = torch.concat((torch.ones(len(permuts), 1)*end_of_tour, torch.tensor(permuts)), dim=-1).to(torch.int64)
-        locs_permutes = self.gather_by_index(permuts)
-        dis = self.get_tour_length(locs_permutes)
-        # dis最小的
-        min_dis_ind = torch.argmin(dis)
-        min_tour = permuts[min_dis_ind]
-        return min_tour
+
+        best_tour = None
+        best_length = 1e5
+        uncovered = uncovered.squeeze().tolist()
+        if not isinstance(uncovered, list):
+            uncovered = [uncovered]
+        times = min(self.search_iters, math.factorial(len(uncovered)))
+        for i in range(times):
+            perm = uncovered
+            random.shuffle(perm)
+            perm = torch.tensor(perm)
+            tour = torch.concat((end_of_tour.unsqueeze(0), perm), dim=0)
+            locs_permutes = self.gather_by_index(tour)
+            dis = self.get_tour_length(locs_permutes)
+            if dis < best_length:
+                best_length = dis
+                best_tour = tour
+            
+        return best_tour
     
     def forward(self):
         rewards = []
@@ -264,7 +276,7 @@ class LocalSearch2_csp:
             "var reward": var_,
             "time": est-st
         }
-
+    # @profile(stream=open('log_mem_csp_LS2.log', 'w+'))
     def forward_single(self, tour=None, stop_cost = -1e6):
 
         if tour is None:
