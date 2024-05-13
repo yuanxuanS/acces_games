@@ -267,7 +267,7 @@ class Protagonist:
         elif epoch > 0 and epoch < 5:
             max_epoch = cfg.prog_epoch2  #20  # 
         else: 
-            max_epoch = cfg.prog_epoch2
+            max_epoch = cfg.prog_epoch3
         
         # get protagonist's policy from strategy: adver用策略变化，prog更新policy
         cur_policy = self.get_curr_policy()     # sample a AttentionModel's policy
@@ -608,8 +608,8 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             row_payoff = []
             protagonist_model.policy = protagonist.get_policy_i(0)
             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(0)
-            # protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", 0, protagonist_model.policy)
-            # adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
+            protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", 0, protagonist_model.policy)
+            adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
             
             
             # td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
