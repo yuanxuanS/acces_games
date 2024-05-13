@@ -2,7 +2,7 @@
 
 defaults:
   
-  - override /env: svrp.yaml
+  - override /env: opsa.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
@@ -15,7 +15,7 @@ prog_epoch2: 20
 adver_epoch: 20
 
 env:
-  num_loc: 50
+  num_loc: 20
 
 logger:
   wandb:
@@ -51,7 +51,8 @@ model:
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path:  /home/u2021141179/rl4co_cp/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
+load_prog_from_path:  /home/u2021141179/rl4co_cp/logs/train/runs/opsa20/am-opsa20/2024-05-08_09-14-24/rl4co/cks8a5wy/checkpoints/epoch=99-step=125000.ckpt
+#/home/u2021141179/rl4co_cp/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
 # /home/u2021141179/rl4co_cp/logs/train/runs/opsa50/am-opsa50/2024-05-08_05-17-10/rl4co/j8nwkpj1/checkpoints/epoch=99-step=125000.ckpt
 
 # opsa20
