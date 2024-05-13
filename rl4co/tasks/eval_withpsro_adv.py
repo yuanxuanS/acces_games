@@ -144,6 +144,7 @@ class Protagonist:
         self.policies = []
         self.correspond_baseline = []
         self.strategy = []
+        self.no_zeroth = False
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     def get_a_policy(self):
@@ -220,12 +221,20 @@ class Protagonist:
         models = os.listdir(load_dir)
         log.info(f"{len(models)} policies to be loaded now.")
         assert len(self.policies) == 0, "polices are not empty but load more polices!"
-        for i in range(len(models)):
-            model_w = torch.load(load_dir+"progPolicy_"+str(i)+".pth")
+        length = range(len(models))
+        pth_0 = load_dir+"progPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f" 0 not exists")
+            self.no_zeroth = True
+            length = range(1, len(models)+1)
+
+        for i in length:
+            pth = load_dir+"progPolicy_"+str(i)+".pth"
+            model_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(model_w)
             
-            self.policies.append(tmp_policy.to(self.device))
+            self.policies.append(tmp_policy)
         
 
     def get_best_response(self, adversary, cfg, callbacks, logger, epoch, init=False):
@@ -307,6 +316,7 @@ class Adversary:
         self.policies = []
         self.correspond_critic = []
         self.strategy = []
+        self.no_zeroth = False
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     def get_a_policy(self):
@@ -405,19 +415,30 @@ class Adversary:
             print("reload adv from ", load_dir)
             self.policies = []
             self.correspond_critic = []
-        length = len(policies)
-        for i in range(length):
-            policy_w = torch.load(load_dir_policy+"adverPolicy_"+str(i)+".pth")
+
+        self.no_zeroth = False  # 每次初始化为false
+        length = range(len(policies))
+        pth_0 = load_dir_policy+"adverPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f"no 0 to load")
+            self.no_zeroth = True
+            length = range(1, len(policies)+1)
+
+        for i in length:
+            pth = load_dir_policy+"adverPolicy_"+str(i)+".pth"
+            policy_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(policy_w)
-            self.policies.append(tmp_policy.to(self.device))
-
+            self.policies.append(tmp_policy)
+        print(f"adver num is {self.policy_number}")
         load_dir_critic = load_dir + "_critic/"
-        for i in range(length):
-            critic_w = torch.load(load_dir_critic+"adverCritic_"+str(i)+".pth")
+        for i in length:
+            pth = load_dir_critic+"adverCritic_"+str(i)+".pth"
+            critic_w = torch.load(pth)
             tmp_critic = self.critic(self.env.name)
             tmp_critic.load_state_dict(critic_w)
-            self.correspond_critic.append(tmp_critic.to(self.device))
+            self.correspond_critic.append(tmp_critic)
+
 
     def get_best_response(self, protagonist, cfg, callbacks, logger):
         '''
@@ -528,7 +549,16 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         data = np.load(cfg.adv_npz_pth)  # 加载
         payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
+        if adversary_tmp.no_zeroth:
+            print(f"before: adver strate is {adver_strategy}")
+            adver_strategy = adver_strategy[1:]
+            print(f"after: adver strate is {adver_strategy}")
+
         prog_strategy = data['prog_strategy']
+        if protagonist_tmp.no_zeroth:
+            print(f"before: prog strate is {prog_strategy}")
+            prog_strategy = prog_strategy[1:]
+            print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file

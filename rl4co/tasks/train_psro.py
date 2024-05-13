@@ -156,6 +156,7 @@ class Protagonist:
         self.policies = []
         self.correspond_baseline = []
         self.strategy = []
+        self.no_zeroth = False
     
     def get_a_policy(self):
         return self.policy(self.env.name)
@@ -238,8 +239,16 @@ class Protagonist:
         models = os.listdir(load_dir)
         log.info(f"{len(models)} policies to be loaded now.")
         assert len(self.policies) == 0, "polices are not empty but load more polices!"
-        for i in range(len(models)):
-            model_w = torch.load(load_dir+"progPolicy_"+str(i)+".pth")
+        length = range(len(models))
+        pth_0 = load_dir+"progPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f" 0 not exists")
+            self.no_zeroth = True
+            length = range(1, len(models)+1)
+
+        for i in length:
+            pth = load_dir+"progPolicy_"+str(i)+".pth"
+            model_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(model_w)
             
@@ -325,6 +334,7 @@ class Adversary:
         self.policies = []
         self.correspond_critic = []
         self.strategy = []
+        self.no_zeroth = False
     
     def get_a_policy(self):
         return self.policy(self.env.name), self.critic(self.env.name)
@@ -439,16 +449,26 @@ class Adversary:
             print("reload adv from ", load_dir)
             self.policies = []
             self.correspond_critic = []
-        length = len(policies)
-        for i in range(length):
-            policy_w = torch.load(load_dir_policy+"adverPolicy_"+str(i)+".pth")
+
+        self.no_zeroth = False  # 每次初始化为false
+        length = range(len(policies))
+        pth_0 = load_dir_policy+"adverPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f"no 0 to load")
+            self.no_zeroth = True
+            length = range(1, len(policies)+1)
+
+        for i in length:
+            pth = load_dir_policy+"adverPolicy_"+str(i)+".pth"
+            policy_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(policy_w)
             self.policies.append(tmp_policy)
-
+        print(f"adver num is {self.policy_number}")
         load_dir_critic = load_dir + "_critic/"
-        for i in range(length):
-            critic_w = torch.load(load_dir_critic+"adverCritic_"+str(i)+".pth")
+        for i in length:
+            pth = load_dir_critic+"adverCritic_"+str(i)+".pth"
+            critic_w = torch.load(pth)
             tmp_critic = self.critic(self.env.name)
             tmp_critic.load_state_dict(critic_w)
             self.correspond_critic.append(tmp_critic)
@@ -720,15 +740,25 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         data = np.load(cfg.prog_npz_pth)  # 加载
         payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
+        if adversary_tmp.no_zeroth:
+            print(f"before: adver strate is {adver_strategy}")
+            adver_strategy = adver_strategy[1:]
+            print(f"after: adver strate is {adver_strategy}")
+
         prog_strategy = data['prog_strategy']
+        if protagonist_tmp.no_zeroth:
+            print(f"before: prog strate is {prog_strategy}")
+            prog_strategy = prog_strategy[1:]
+            print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
+        test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
         print(f"load testdata from {test_data_pth}")
         test_data = env.load_data(test_data_pth)
+        print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
         test_dataset = TensorDictDataset(test_data)
-        test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+        test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
 
         payoff_eval = []
         payoff_eval_var = []
@@ -739,6 +769,8 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 adversary_tmp.load_model_weights(cfg.evaluate_adv_dir+"/models_weights")
                 data_adv = np.load(cfg.adv_npz_pth)  # 加载
                 adver_strategy = data_adv['adver_strategy']
+                if adversary_tmp.no_zeroth:
+                    adver_strategy = adver_strategy[1:]
                 another = "_another_"
             else:
                 another = "_this_"
@@ -774,7 +806,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 payoff_eval.append(payoff_diff_adv)
 
                 
-            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.test_data_size, len(prog_strategy), len(adver_strategy))
+            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.val_data_size, len(prog_strategy), len(adver_strategy))
             reward_eval = eval(payoff_eval, prog_strategy, adver_strategy)
             rewards_graphs = eval_allgraph(rewards_whole_g.cpu().numpy(), prog_strategy, adver_strategy)
             eval_var = rewards_graphs.var()
@@ -819,7 +851,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     eval_reward=reward_eval,
                     eval_var=eval_var,
                     eval_payoffs=payoff_eval,       # key=value
-                    eval_vars=payoff_eval_var,
+                    eval_vars=eval_var,
                     eval_time=time_,
                     eval_data=test_data_pth,
                     eval_adver_strategy=adver_strategy,
