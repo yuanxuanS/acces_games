@@ -55,6 +55,7 @@ class CSPEnv(RL4COEnvBase):
         self.max_loc = max_loc
         self.min_cover = min_cover
         self.max_cover = max_cover
+        print(f" cover range {self.min_cover} - {self.max_cover}")
         self._make_spec(td_params)
 
         CSPEnv.stoch_idx = kwargs.get("stoch_idx")
@@ -334,7 +335,7 @@ class CSPEnv(RL4COEnvBase):
         '''
         # h = hpy().heap()
         A, B, G = CSPEnv.stoch_params[CSPEnv.stoch_idx]
-        print(f"ABG in csp is {A} {B} {G}")
+        # print(f"ABG in csp is {A} {B} {G}")
         if inp.dim() <= 2:
             inp_ =  inp[..., None]
         else:
