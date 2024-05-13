@@ -318,7 +318,7 @@ class CSPEnv(RL4COEnvBase):
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 None).squeeze(-1).float().to(self.device)
         # 不能超过max_cover范围
-        stochastic_maxcover = torch.clamp(stochastic_maxcover, max=self.max_cover)
+        stochastic_maxcover = torch.clamp(stochastic_maxcover, min=self.min_cover, max=self.max_cover)
         # min cover: 仅为了initembedding中
         min_cover = torch.ones_like(max_cover) * self.min_cover
         return TensorDict({"locs": locs,
