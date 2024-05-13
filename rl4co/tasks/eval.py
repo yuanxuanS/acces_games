@@ -70,6 +70,8 @@ class EvalBase:
         inference_time = start_event.elapsed_time(end_event)
 
         tqdm.write(f"Mean reward for {self.name}: {rewards.mean():.4f}")
+        var_ = rewards.var()
+        tqdm.write(f"Var for {self.name}: {var_:.4f}")
         tqdm.write(f"Time: {inference_time/1000:.4f}s")
 
         # Empty cache
@@ -80,6 +82,7 @@ class EvalBase:
             "rewards": rewards.cpu(),
             "inference_time": inference_time,
             "avg_reward": rewards.cpu().mean(),
+            "var_reward": var_.cpu(),
         }
 
     def _inner(self, policy, td):

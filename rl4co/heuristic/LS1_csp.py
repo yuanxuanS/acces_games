@@ -285,7 +285,7 @@ class LocalSearch1_csp:
         for i in range(self.batch_size):
             print(f"search for data {i}")
             cost, solution = self.forward_single()
-            print(solution)
+            # print(solution)
             self.instance_idx += 1
             rewards.append(cost)
             routes.append(solution)
@@ -295,10 +295,15 @@ class LocalSearch1_csp:
 
         routes = convert_to_fit_npz(routes)
 
+        mean_ = sum(rewards) / len(rewards)
+        squared_deviations = [(value - mean_) ** 2 for value in rewards]
+        var_ = sum(squared_deviations) / len(rewards)
+
         return {
             "routes": routes,
             "rewards": rewards,
             "mean reward": sum(rewards) / len(rewards),
+            "var reward": var_,
             "time": est-st
         }
     
@@ -306,7 +311,7 @@ class LocalSearch1_csp:
 
         if tour is None:
             tour = self.init_solution()
-            print("Initial Solution!!")
+            # print("Initial Solution!!")
 
         ids = torch.arange(0, self.num_loc)
 

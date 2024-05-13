@@ -88,7 +88,10 @@ class OPSAEnv(RL4COEnvBase):
         opswtw data: test and val data are the same 
         """
         if not batch_size:
-            batch_size = 10000
+            if "val" in fpath:
+                batch_size = 10000
+            elif "test" in fpath:
+                batch_size = 100
         if isinstance(batch_size, list):
             batch_size = batch_size[0]
         td_load = load_npz_to_tensordict(fpath)[:batch_size, ...]

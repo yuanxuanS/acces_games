@@ -49,10 +49,14 @@ class TabuSearch_svrp:
         print(f"time is {time_end - time_start}")
         batch_solutions = convert_to_fit_npz(batch_solutions)
         
+        mean_ = sum(batch_costs_real) / len(batch_costs_real)
+        squared_deviations = [(value - mean_) ** 2 for value in batch_costs_real]
+        var_ = sum(squared_deviations) / len(batch_costs_real)
         return {
             "routes": batch_solutions,
             "rewards": batch_costs_real,
-            "mean reward": sum(batch_costs_real) / len(batch_costs_real),
+            "mean reward": mean_,
+            "var reward": var_,
             "time": time_end - time_start,
         }
     

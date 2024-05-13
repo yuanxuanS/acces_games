@@ -70,10 +70,15 @@ class LocalSearch_opsa:
 
         routes = convert_to_fit_npz(routes)
 
+        mean_ = sum(rewards) / len(rewards)
+        squared_deviations = [(value - mean_) ** 2 for value in rewards]
+        var_ = sum(squared_deviations) / len(rewards)
+
         return {
             "solutions": routes,
             "real rewards": rewards,
-            "real mean reward": sum(rewards) / len(rewards),
+            "real mean reward": mean_,
+            "var reward": var_,
             "time": est - st,
         }
     

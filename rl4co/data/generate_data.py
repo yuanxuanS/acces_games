@@ -48,16 +48,18 @@ def generate_env_data(env_type, *args, **kwargs):
 
 
 def generate_csp_data(dataset_size, csp_size):
+    cover_low = 0.1
+    cover_high = 0.3
     locs = np.random.uniform(size=(dataset_size, csp_size, 2)).astype(np.float32)
     size = csp_size
-    max_cover = np.random.uniform(size=(dataset_size, csp_size), low=0.1, high=0.3).astype(np.float32)
+    max_cover = np.random.uniform(size=(dataset_size, csp_size), low=cover_low, high=cover_high).astype(np.float32)
     weather = np.random.uniform(low=-1., high=1., size=(dataset_size, 3)).astype(np.float32)
     stochastic_maxcover = get_stoch_var(max_cover[..., np.newaxis],
                                           locs.copy(),
                                                 np.repeat(weather[:, np.newaxis, :], size, axis=1),
                                                 None).squeeze(-1).astype(np.float32)
-    stochastic_maxcover = np.clip(stochastic_maxcover, a_min=0., a_max=0.3)
-    min_cover = np.ones_like(max_cover) * 0.1
+    stochastic_maxcover = np.clip(stochastic_maxcover, a_min=cover_low, a_max=cover_high)
+    min_cover = np.ones_like(max_cover) * cover_low
     return {
         "locs": locs,
         "max_cover": max_cover,

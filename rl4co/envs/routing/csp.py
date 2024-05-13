@@ -55,6 +55,7 @@ class CSPEnv(RL4COEnvBase):
         self.max_loc = max_loc
         self.min_cover = min_cover
         self.max_cover = max_cover
+        print(f" cover range {self.min_cover} - {self.max_cover}")
         self._make_spec(td_params)
 
         CSPEnv.stoch_idx = kwargs.get("stoch_idx")

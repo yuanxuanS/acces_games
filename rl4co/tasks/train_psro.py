@@ -30,6 +30,7 @@ import numpy as np
 import random
 import nashpy as nash
 import os
+import time
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -54,8 +55,9 @@ def play_game(env, td_init, prog, adver=None):
     ret = prog_model(td)
     mean_reward = ret["reward"].mean().item()   # return scalar
     # print(mean_reward)
-    reward = mean_reward
-    return reward
+    
+
+    return mean_reward, ret["reward"]
 
 def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range):
     '''
@@ -91,9 +93,11 @@ def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, r
             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(c)
             # td_init = env.reset(val_data.clone()).to(device)
             # payoff = play_game(env, td_init, protagonist_model, adversary_model)
-
-            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model) for batch in val_dl])
-            payoff = rewards.mean().item()
+            rewards = []
+            for batch in val_dl:
+                re, _ = play_game(env, batch.clone(), protagonist_model, adversary_model)
+                rewards.append(re)
+            payoff = torch.tensor(rewards).mean().item()
 
             if r > orig_r - 1:
                 new_row_payoff.append(payoff)
@@ -112,7 +116,8 @@ def eval(payoff, prog_strategy, adver_strategy):
     
     A = np.array(payoff)
     rps = nash.Game(A)
-    assert len(prog_strategy) == len(adver_strategy), "strategy dims not equal"
+    if len(prog_strategy) != len(adver_strategy):
+        print("strategy dims not equal, just eval different psro is ok!")
     result = rps[prog_strategy, adver_strategy]
     return result[0]
 
@@ -151,6 +156,7 @@ class Protagonist:
         self.policies = []
         self.correspond_baseline = []
         self.strategy = []
+        self.no_zeroth = False
     
     def get_a_policy(self):
         return self.policy(self.env.name)
@@ -233,8 +239,16 @@ class Protagonist:
         models = os.listdir(load_dir)
         log.info(f"{len(models)} policies to be loaded now.")
         assert len(self.policies) == 0, "polices are not empty but load more polices!"
-        for model in models:
-            model_w = torch.load(load_dir+model)
+        length = range(len(models))
+        pth_0 = load_dir+"progPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f" 0 not exists")
+            self.no_zeroth = True
+            length = range(1, len(models)+1)
+
+        for i in length:
+            pth = load_dir+"progPolicy_"+str(i)+".pth"
+            model_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(model_w)
             
@@ -320,6 +334,7 @@ class Adversary:
         self.policies = []
         self.correspond_critic = []
         self.strategy = []
+        self.no_zeroth = False
     
     def get_a_policy(self):
         return self.policy(self.env.name), self.critic(self.env.name)
@@ -429,17 +444,31 @@ class Adversary:
         load_dir_policy = load_dir + "_policy/"
         policies = os.listdir(load_dir_policy)
         log.info(f"{len(policies)} policies to be loaded now.")
-        assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
-        for policy in policies:
-            policy_w = torch.load(load_dir_policy+policy)
+        # assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
+        if not len(self.policies) == 0:
+            print("reload adv from ", load_dir)
+            self.policies = []
+            self.correspond_critic = []
+
+        self.no_zeroth = False  # 每次初始化为false
+        length = range(len(policies))
+        pth_0 = load_dir_policy+"adverPolicy_"+str(0)+".pth"
+        if not os.path.exists(pth_0):
+            print(f"no 0 to load")
+            self.no_zeroth = True
+            length = range(1, len(policies)+1)
+
+        for i in length:
+            pth = load_dir_policy+"adverPolicy_"+str(i)+".pth"
+            policy_w = torch.load(pth)
             tmp_policy = self.policy(self.env.name)
             tmp_policy.load_state_dict(policy_w)
             self.policies.append(tmp_policy)
-
+        print(f"adver num is {self.policy_number}")
         load_dir_critic = load_dir + "_critic/"
-        critics = os.listdir(load_dir_critic)
-        for critic in critics:
-            critic_w = torch.load(load_dir_critic+critic)
+        for i in length:
+            pth = load_dir_critic+"adverCritic_"+str(i)+".pth"
+            critic_w = torch.load(pth)
             tmp_critic = self.critic(self.env.name)
             tmp_critic.load_state_dict(critic_w)
             self.correspond_critic.append(tmp_critic)
@@ -573,10 +602,6 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 tmp_model = tmp_model.load_from_checkpoint(cfg.load_prog_from_path)
                 protagonist.policies[0] = tmp_model.policy
             protagonist_model.policy = protagonist.get_policy_i(0)
-            # prog_bs_reward = play_game(env, protagonist_model, adversary_model)
-            # 
-            # adversary.policies[0], adversary.correspond_critic[0], adver_bs_reward = adversary.get_best_response(protagonist,
-            #                                                                                                       cfg, callbacks, logger)
 
 
             payoff_prot = []
@@ -587,8 +612,8 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             # adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
             
             
-            td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model) for batch in val_dl])
+            # td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
+            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model)[0] for batch in val_dl])
             payoff = rewards.mean().item()
             # payoff = play_game(env, batch, protagonist_model, adversary_model)
             row_payoff.append(payoff)
@@ -708,57 +733,141 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         # 加载psro prog和adver
         
         protagonist_tmp = Protagonist(AttentionModel, AttentionModelPolicy, env)
-        protagonist_tmp.load_model_weights(cfg.evaluate_savedir+"/models_weights/")
+        protagonist_tmp.load_model_weights(cfg.evaluate_prog_dir+"/models_weights/")
         adversary_tmp = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
-        adversary_tmp.load_model_weights(cfg.evaluate_savedir+"/models_weights")
+        adversary_tmp.load_model_weights(cfg.evaluate_prog_dir+"/models_weights")
 
-        data = np.load(cfg.npz_pth)  # 加载
+        data = np.load(cfg.prog_npz_pth)  # 加载
         payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
+        if adversary_tmp.no_zeroth:
+            print(f"before: adver strate is {adver_strategy}")
+            adver_strategy = adver_strategy[1:]
+            print(f"after: adver strate is {adver_strategy}")
+
         prog_strategy = data['prog_strategy']
+        if protagonist_tmp.no_zeroth:
+            print(f"before: prog strate is {prog_strategy}")
+            prog_strategy = prog_strategy[1:]
+            print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
+        test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
+        print(f"load testdata from {test_data_pth}")
         test_data = env.load_data(test_data_pth)
+        print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-        
+        test_dataset = TensorDictDataset(test_data)
+        test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
+
         payoff_eval = []
+        payoff_eval_var = []
         if cfg.get("eval_withadv"):
             # 有adver的eval
             print("eval with adversary")
-            for r in range(protagonist_tmp.policy_number):
+            if cfg.another_adv:
+                adversary_tmp.load_model_weights(cfg.evaluate_adv_dir+"/models_weights")
+                data_adv = np.load(cfg.adv_npz_pth)  # 加载
+                adver_strategy = data_adv['adver_strategy']
+                if adversary_tmp.no_zeroth:
+                    adver_strategy = adver_strategy[1:]
+                another = "_another_"
+            else:
+                another = "_this_"
+            st = time.time()
+            rewards_whole_g = None
+            for r in range(len(prog_strategy)):     # 当error停止，出现policy个数-strategy个数 = 1
                 protagonist_model.policy = protagonist_tmp.get_policy_i(r)
                 payoff_diff_adv = []
-                for c in range(adversary_tmp.policy_number):
+                payoff_diff_adv_var = []
+                for c in range(len(adver_strategy)):
 
                     adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
-                    td_init = env.reset(test_data.clone()).to(device)
-                    payoff = play_game(env, td_init, protagonist_model, adversary_model)
+                    # td_init = env.reset(test_data.clone()).to(device)
+                    # payoff = play_game(env, td_init, protagonist_model, adversary_model)
+                    rewards = []
+                    rewards_all = None
+                    for batch in test_dl:
+                        re, re_allg = play_game(env, batch.clone(), protagonist_model, adversary_model)
+                        rewards.append(re)
+                        if rewards_all == None:
+                            rewards_all = re_allg
+                        else:
+                            rewards_all = torch.cat((rewards_all, re_allg), dim=0)
+                    payoff = torch.tensor(rewards).mean().item()
                     payoff_diff_adv.append(payoff)
                     print(f"r,c :{r},{c}")
+                    if rewards_whole_g == None:
+                        rewards_whole_g = rewards_all[:, None]
+                    else:
+                        rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
+
+                    # 
                 payoff_eval.append(payoff_diff_adv)
+
                 
+            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.val_data_size, len(prog_strategy), len(adver_strategy))
             reward_eval = eval(payoff_eval, prog_strategy, adver_strategy)
-            save_eval_pth = "eval_withadv.npz"
+            rewards_graphs = eval_allgraph(rewards_whole_g.cpu().numpy(), prog_strategy, adver_strategy)
+            eval_var = rewards_graphs.var()
+
+            time_ = time.time()-st
+            save_eval_pth = "eval_with"+another+"adv.npz"
         else:
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
             print("eval without adversary")
-            for i in range(protagonist_tmp.policy_number):
+            st = time.time()
+            rewards_whole_g = None
+            for i in range(len(prog_strategy)):
                 protagonist_model.policy = protagonist_tmp.get_policy_i(i)
-                td_init = env.reset(test_data.clone()).to(device)
-                payoff = play_game(env, td_init, protagonist_model, None)
+                # td_init = env.reset(test_data.clone()).to(device)
+                # payoff = play_game(env, td_init, protagonist_model, None)
+                rewards = []
+                rewards_all = None
+                for batch in test_dl:
+                    re, re_allg = play_game(env, batch.clone(), protagonist_model, adversary_model)
+                    rewards.append(re)
+                    if rewards_all == None:
+                        rewards_all = re_allg
+                    else:
+                        rewards_all = torch.cat((rewards_all, re_allg), dim=0)
+                payoff = torch.tensor(rewards).mean().item()
                 payoff_eval.append(payoff)
+                if rewards_whole_g == None:
+                    rewards_whole_g = rewards_all[:, None]
+                else:
+                    rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
             reward_eval = eval_noadver(payoff_eval, prog_strategy)
+            # 在instance/图 上分别计算psro下的reward， 再计算方差
+            rewards_graphs = eval_noadver_allgraph(rewards_whole_g.cpu().numpy(), prog_strategy)
+            eval_var = rewards_graphs.var()
+
+            time_ = time.time()-st
             save_eval_pth = "eval_withoutadv.npz"
-        print(f"eval reward: {reward_eval}")
-        np.savez(cfg.evaluate_savedir+ '/'+save_eval_pth, 
+        print(f"eval reward: {reward_eval}, var is {eval_var}, time is {time_}")
+        adv_pth = cfg.evaluate_adv_dir if cfg.another_adv else None
+        np.savez(cfg.ckpt_psro_path+ '/'+save_eval_pth, 
+                    adv_pth=adv_pth,
                     eval_reward=reward_eval,
+                    eval_var=eval_var,
                     eval_payoffs=payoff_eval,       # key=value
+                    eval_vars=eval_var,
+                    eval_time=time_,
                     eval_data=test_data_pth,
                     eval_adver_strategy=adver_strategy,
                     eval_prog_strategy=prog_strategy)  # 保
     return None, None
-    
+
+def eval_allgraph(rewards_graph, prog_strategy, adver_strategy):
+    '''
+    rewards_graph: numpy array, shape:(graph_nums, pro_policy_Num, adv_policy_Num)
+    adver_strategy: numpy array, shape:(adv_policy_Num)
+    prog_strategy: numpy array, shape:(pro_policy_Num)
+    '''
+    reward_prog_graph = np.matmul(rewards_graph, np.array(adver_strategy))
+    reward_adver_graph = np.matmul(reward_prog_graph, np.array(prog_strategy))
+    return reward_adver_graph
+
 def eval_noadver(payoff, prog_strategy):
     '''
     根据strategy和payoff表得到, 无adver下
@@ -768,6 +877,13 @@ def eval_noadver(payoff, prog_strategy):
     result = rps[prog_strategy, 1]
     return result[0]
 
+def eval_noadver_allgraph(rewards_graph, prog_strategy):
+    '''
+    rewards_graph: numpy array, shape:(graph_nums, pro_policy_Num)
+    prog_strategy: numpy array, shape:(pro_policy_Num)
+    '''
+    reward_prog_graphs = np.matmul(rewards_graph, np.array(prog_strategy))
+    return reward_prog_graphs
 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="main_psro_frame.yaml")
 def train_psro(cfg: DictConfig) -> Optional[float]:

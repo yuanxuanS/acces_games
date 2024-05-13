@@ -65,7 +65,7 @@ def evaluate_baseline(
     if save_results:
         print("Saving results to {}".format(save_fname))
         np.savez(save_fname, **retvals)
-    print(f"mean reward is {retvals['mean reward']}, time is {retvals['time']}")
+    print(f"mean reward is {retvals['mean reward']}, var is {retvals['var reward']}, time is {retvals['time']}")
     return retvals
 
 
@@ -131,5 +131,5 @@ def evaluate_baseline_withpsroadv(
     if save_results:
         print("Saving results to {}".format(save_fname))
         np.savez(save_fname, **retvals)
-    print(f"mean reward is {retvals['mean reward']}, time is {retvals['time']}")
+    print(f"mean reward is {retvals['mean reward']}, var is {retvals['var reward']} time is {retvals['time']}")
     return retvals

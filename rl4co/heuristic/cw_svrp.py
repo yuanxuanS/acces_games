@@ -231,6 +231,7 @@ class CW_svrp:
         et = time.time() - st
         rewards = self._get_reward(self.td, self.routes)     #[batch]
         mean_reward = rewards.mean()
+        var_ = rewards.var()
         print('------CW-----')
         # print(f'Routes found are:{self.routes}, rewards are {rewards}, mean reward is {mean_reward} ')
         
@@ -238,6 +239,7 @@ class CW_svrp:
         return {"routes":routes,
                 "rewards": rewards,
                 "mean reward": mean_reward,
+                "var reward": var_,
                 "time": et,
             }
 
