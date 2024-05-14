@@ -48,8 +48,8 @@ def generate_env_data(env_type, *args, **kwargs):
 
 
 def generate_csp_data(dataset_size, csp_size):
-    cover_low = 0.1
-    cover_high = 0.3
+    cover_low = 0.
+    cover_high = 0.25
     locs = np.random.uniform(size=(dataset_size, csp_size, 2)).astype(np.float32)
     size = csp_size
     max_cover = np.random.uniform(size=(dataset_size, csp_size), low=cover_low, high=cover_high).astype(np.float32)
