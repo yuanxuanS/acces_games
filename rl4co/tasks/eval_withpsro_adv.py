@@ -20,7 +20,7 @@ from rl4co.model_adversary import PPOContiAdvModel
 from rl4co.data.dataset import TensorDictDataset
 from torch.utils.data import DataLoader
 from rl4co.data.dataset import tensordict_collate_fn
-
+from rl4co.tasks.train_psro import update_payoff
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
@@ -59,44 +59,44 @@ def play_game(env, td_init, prog, adver=None):
 
     return mean_reward, ret["reward"]
 
-def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range):
-    '''
-        row 和col的policy 进行 play_game 填充所有pair的 payoff:
-        -----------------
-        |xxxx | fill fill
-        |-----  fill fill
-        |fill fill fill
-     '''
-    val_data = env.load_date(val_data_pth)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
+# def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range):
+#     '''
+#         row 和col的policy 进行 play_game 填充所有pair的 payoff:
+#         -----------------
+#         |xxxx | fill fill
+#         |-----  fill fill
+#         |fill fill fill
+#      '''
+#     val_data = env.load_date(val_data_pth)
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
-    # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
-    protagonist_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
-    # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
-    adversary_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
+#     # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
+#     protagonist_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
+#     # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
+#     adversary_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
     
-    orig_r = len(payoff_prot)
-    orig_c = len(payoff_prot[0])
+#     orig_r = len(payoff_prot)
+#     orig_c = len(payoff_prot[0])
 
     
-    for r in row_range:
-        if r > orig_r - 1:
-            new_row_payoff = []
-        protagonist_model.policy = protagonist.get_policy_i(r)
-        for c in col_range:
+#     for r in row_range:
+#         if r > orig_r - 1:
+#             new_row_payoff = []
+#         protagonist_model.policy = protagonist.get_policy_i(r)
+#         for c in col_range:
 
-            adversary_model.policy, adversary_model.critic = adversary.get_policy_i(c)
-            td_init = env.reset(val_data.clone()).to(device)
-            payoff = play_game(env, td_init, protagonist_model, adversary_model)
-            if r > orig_r - 1:
-                new_row_payoff.append(payoff)
-            if c > orig_c -1 and r < orig_r -1:     # row新增行，包括c新增的一列
-                payoff_prot[r].append(payoff)
+#             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(c)
+#             td_init = env.reset(val_data.clone()).to(device)
+#             payoff = play_game(env, td_init, protagonist_model, adversary_model)
+#             if r > orig_r - 1:
+#                 new_row_payoff.append(payoff)
+#             if c > orig_c -1 and r < orig_r -1:     # row新增行，包括c新增的一列
+#                 payoff_prot[r].append(payoff)
 
-        if r > orig_r - 1:
-            payoff_prot.append(new_row_payoff)
-    return payoff_prot
+#         if r > orig_r - 1:
+#             payoff_prot.append(new_row_payoff)
+#     return payoff_prot
     
 
 def eval(payoff, prog_strategy, adver_strategy):
@@ -561,7 +561,7 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
+        test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
         test_data = env.load_data(test_data_pth)
         test_dataset = TensorDictDataset(test_data)
         test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
