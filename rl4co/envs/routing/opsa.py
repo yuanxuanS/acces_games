@@ -138,8 +138,8 @@ class OPSAEnv(RL4COEnvBase):
                                      weather[:, None, :].
                                      repeat(1, self.num_loc, 1).to("cpu"),
                                      None).squeeze(-1).float().to(self.device)
-            tmp = torch.clamp(tmp, max=1.)
-        
+            tmp = torch.clamp(tmp, min=0., max=1.)
+            tmp[:, 0] = 0
         
         tmp = tmp * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
         attacked = tmp < attack_prob
@@ -239,7 +239,7 @@ class OPSAEnv(RL4COEnvBase):
         
         tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
-        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.01, max=1e5)
         
         # del tot_w, noise
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
