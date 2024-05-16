@@ -135,6 +135,10 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         # Evaluate old actions, log probabilities, and rewards
         # with torch.no_grad():
         td = self.env.reset(batch)  # note: clone needed for dataloader
+        if phase == "test" or phase == "val":
+            self.policy.eval()
+        elif phase== "train": 
+            self.policy.train()
         out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
         td = self.env.reset_stochastic_var(td, out["action_adv"][..., None])    # env transition: get new real demand
         if self.opponent:       # get reward from current run of opponent
