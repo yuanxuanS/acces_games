@@ -120,7 +120,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         self.protagonist.automatic_optimization = False
         self.prog_polices = prog_polices
         self.prog_strategy = prog_strategy
-        
+        # self.device =  torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # if isinstance(adversary, str):
         #     adversary = get_adversary(adversary)
         assert adversary, "must give adversary in psro!" 
@@ -339,9 +339,9 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         '''
         sample_i = PSRO_AM_PPO.sample_strategy(self.adver_strategy)
         sampled_policy, sampled_critic = self.adver_polices[sample_i], self.adver_critics[sample_i]
-        print(f"--- sample afversary policy: {sample_i}")
-        self.adversary.policy = sampled_policy
-        self.adversary.critic = sampled_critic
+        log.info(f"--- sample afversary policy: {sample_i}")
+        self.adversary.policy = sampled_policy.to(self.device)
+        self.adversary.critic = sampled_critic.to(self.device)
 
     def update_protagonist(self):
         '''
@@ -351,8 +351,8 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         '''
         sample_i = PSRO_AM_PPO.sample_strategy(self.prog_strategy)
         sampled_policy = self.prog_polices[sample_i]
-        print(f"--- sample prog policy: {sample_i}")
-        self.protagonist.policy = sampled_policy
+        log.info(f"--- sample prog policy: {sample_i}")
+        self.protagonist.policy = sampled_policy.to(self.device)
         
 
     def shared_step(self, batch: Any, batch_idx: int, phase: str, **kwargs):
@@ -361,15 +361,26 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         # phase = "train"
         optim_prog, optim_adv = self.optimizers()
         # adv forward: change hyparams, env stochvar transition
-        td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)        # inference_step中不会计算loss记录梯度
-            
+        if phase == "train":
+            if self.fix_adversary:
+                td, out_adv = self.adversary.inference_step(batch, batch_idx, "val")        # inference_step中不会计算loss记录梯度
+            else:
+                td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)        # inference_step中不会计算loss记录梯度
+        elif phase == "val" or phase == "test":
+            td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)        # inference_step中不会计算loss记录梯度
+        
         # prog forward: get solution and update
         td_temp = td.clone()
-        if self.fix_protagonist:
-            with torch.no_grad():
-                out_prog = self.protagonist.calculoss_step(td_temp, batch, "val")   # 传入”val“，内部不计算loss
-        else:
+
+        if phase == "train":
+            if self.fix_protagonist:
+                with torch.no_grad():
+                    out_prog = self.protagonist.calculoss_step(td_temp, batch, "val")   # 传入”val“，内部不计算loss
+            else:
+                out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
+        elif phase == "val" or phase == "test":
             out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
+
 
         if phase == "train":
             if not self.fix_protagonist:        # 不固定prog，需要更新

@@ -8,7 +8,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 from rl4co.utils.heuristic_utils import convert_to_fit_npz
-
+import math
 import time
 import random
 from .LS_2opt_csp import LS_csp_2opt
@@ -53,6 +53,7 @@ class LocalSearch1_csp:
         self.if_diverse = True
         self.if_mutate = True
         self.a = 0.1
+        self.search_iters = 30
         self.print_enable = False
     
 
@@ -245,21 +246,30 @@ class LocalSearch1_csp:
         return src.gather(dim, idx).squeeze() if squeeze else src.gather(dim, idx)
 
 
-    # def get_best_permute(self, )
     def add_uncovered_nodes(self, end_of_tour, uncovered):
         '''
             先按照最短路径加上uncovered节点
             加一个后更新uncovered，如果提前都覆盖就停止再加节点
         '''
-        from itertools import permutations
-        permuts = list(permutations(uncovered))
-        permuts = torch.concat((torch.ones(len(permuts), 1)*end_of_tour, torch.tensor(permuts)), dim=-1).to(torch.int64)
-        locs_permutes = self.gather_by_index(permuts)
-        dis = self.get_tour_length(locs_permutes)
-        # dis最小的
-        min_dis_ind = torch.argmin(dis)
-        min_tour = permuts[min_dis_ind]
-        return min_tour
+
+        best_tour = None
+        best_length = 1e5
+        uncovered = uncovered.squeeze().tolist()
+        if not isinstance(uncovered, list):
+            uncovered = [uncovered]
+        times = min(self.search_iters, math.factorial(len(uncovered)))
+        for i in range(times):
+            perm = uncovered
+            random.shuffle(perm)
+            perm = torch.tensor(perm)
+            tour = torch.concat((end_of_tour.unsqueeze(0), perm), dim=0)
+            locs_permutes = self.gather_by_index(tour)
+            dis = self.get_tour_length(locs_permutes)
+            if dis < best_length:
+                best_length = dis
+                best_tour = tour
+            
+        return best_tour
     
     def get_tour_length(self, ordered_locs):
         """Compute the total tour distance for a batch of ordered tours.

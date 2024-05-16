@@ -31,501 +31,15 @@ import random
 import nashpy as nash
 import os
 import time
+from rl4co.model_MA import Protagonist, Adversary
+from rl4co.model_MA.utils_psro import *
+
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
 log = utils.get_pylogger(__name__)
 
-def play_game(env, td_init, prog, adver=None):
-    '''
-        加载batch数据, 返回一次evaluation的reward: prog-adver
-        prog: AM model
-        adver: PPOContin model
-    '''
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    td_init = env.reset(td_init).to(device)
-    prog_model = prog.to(device)
 
-    if adver:
-        adver_model = adver.to(device)
-        out_adv = adver_model(td_init.clone(), phase="test", return_actions=True)
-        td = env.reset_stochastic_var(td_init, out_adv["action_adv"][..., None])    # env transition: get new real demand
-    else:
-        td = td_init.clone()
-    ret = prog_model(td)
-    mean_reward = ret["reward"].mean().item()   # return scalar
-    # print(mean_reward)
-    
-
-    return mean_reward, ret["reward"]
-
-def update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range):
-    '''
-        row 和col的policy 进行 play_game 填充所有pair的 payoff:
-        -----------------
-        |xxxx | fill fill
-        |-----  fill fill
-        |fill fill fill
-     '''
-    # val_data = env.load_data(val_data_pth)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-
-    val_data = env.load_data(val_data_pth)
-    val_dataset = TensorDictDataset(val_data)
-    val_dl = DataLoader(val_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
-    
-    # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
-    protagonist_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
-    # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
-    adversary_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
-    
-    orig_r = len(payoff_prot)
-    orig_c = len(payoff_prot[0])
-
-    
-    for r in row_range:
-        if r > orig_r - 1:
-            new_row_payoff = []
-        protagonist_model.policy = protagonist.get_policy_i(r)
-        for c in col_range:
-
-            adversary_model.policy, adversary_model.critic = adversary.get_policy_i(c)
-            # td_init = env.reset(val_data.clone()).to(device)
-            # payoff = play_game(env, td_init, protagonist_model, adversary_model)
-            rewards = []
-            for batch in val_dl:
-                re, _ = play_game(env, batch.clone(), protagonist_model, adversary_model)
-                rewards.append(re)
-            payoff = torch.tensor(rewards).mean().item()
-
-            if r > orig_r - 1:
-                new_row_payoff.append(payoff)
-            if c > orig_c -1 and r < orig_r -1:     # row新增行，包括c新增的一列
-                payoff_prot[r].append(payoff)
-
-        if r > orig_r - 1:
-            payoff_prot.append(new_row_payoff)
-    return payoff_prot
-    
-
-def eval(payoff, prog_strategy, adver_strategy):
-    '''
-    根据strategy和payoff表得到
-    '''
-    
-    A = np.array(payoff)
-    rps = nash.Game(A)
-    if len(prog_strategy) != len(adver_strategy):
-        print("strategy dims not equal, just eval different psro is ok!")
-    result = rps[prog_strategy, adver_strategy]
-    return result[0]
-
-def nash_solver(payoff):
-    """ given payoff matrix for a zero-sum normal-form game, numpy arrays
-    return first mixed equilibrium (may be multiple)
-    returns a tuple of numpy arrays """
-    game = nash.Game(payoff)
-    with np.errstate(invalid='raise'):
-        equilibria = game.lemke_howson_enumeration()
-        equilibrium = next(equilibria, None)
-
-        # Lemke-Howson couldn't find equilibrium OR
-        # Lemke-Howson return error - game may be degenerate. try other approaches
-        if equilibrium is None or (equilibrium[0].shape != (payoff.shape[0],) and equilibrium[1].shape != (payoff.shape[0],)):
-            # try other
-            print('\n\n\n\n\nuh oh! degenerate solution')
-            print('payoffs are\n', payoff)
-            equilibria = game.vertex_enumeration()
-            equilibrium = next(equilibria)
-            if equilibrium is None:
-                print('\n\n\n\n\nuh oh x2! degenerate solution again!!')
-                print('payoffs are\n', payoff)
-                equilibria = game.support_enumeration()
-                equilibrium = next(equilibria)
-
-        assert equilibrium is not None
-        return equilibrium
-
-
-class Protagonist:
-    def __init__(self, model, policy, env) -> None:
-        self.model = model      # AttentionModel class
-        self.policy = policy
-        self.env = env
-        self.policies = []
-        self.correspond_baseline = []
-        self.strategy = []
-        self.no_zeroth = False
-    
-    def get_a_policy(self):
-        return self.policy(self.env.name)
-    
-    def get_a_model(self):
-        return self.model(self.env)
-        
-    def add_policy(self, policy):
-        self.policies.append(policy)
-    
-    def get_policy_i(self, idx):
-        assert idx > -1 and idx < self.policy_number, "idx exceeds range"
-        assert type(idx) == int, "idx wrong type!"
-        return self.policies[idx]
-    
-    def get_curr_policy(self):
-        '''
-        sample a policy from strategy
-        '''
-        sample_i = sample_strategy(self.strategy)
-        sampled_policy = self.get_policy_i(sample_i)
-        print(f"--- sample prog policy: {sample_i}")
-
-        # copy参数，创建另一个instance
-        curr_policy = self.get_a_policy()
-        # worker_state_dict = [x.state_dict() for x in self.policies]
-        state_dict = sampled_policy.state_dict()
-        weight_keys = list(state_dict.keys())
-        fed_state_dict = collections.OrderedDict()
-        for key in weight_keys:
-            fed_state_dict[key] = state_dict[key]
-        # #### update fed weights to fl model
-        curr_policy.load_state_dict(fed_state_dict)
-
-        # curr_policy = self.get_a_policy()
-        # worker_state_dict = [x.state_dict() for x in self.policies]
-        # weight_keys = list(worker_state_dict[0].keys())
-        # fed_state_dict = collections.OrderedDict()
-        # for key in weight_keys:
-        #     key_sum = 0
-        #     for i in range(self.strategy_length):
-        #         key_sum = key_sum + worker_state_dict[i][key] * self.strategy[i]
-        #     fed_state_dict[key] = key_sum
-        # #### update fed weights to fl model
-        # curr_policy.load_state_dict(fed_state_dict)
-        # print("get curr policy done!")
-        return curr_policy
-    
-    @property
-    def policy_number(self):
-        return len(self.policies)
-    
-    @property
-    def strategy_length(self):
-        return len(self.strategy)
-    
-    def update_strategy(self, strategy):
-        assert sum(strategy) < 1. + 1e-5, "strategy prob is wrong!"
-        if not isinstance(strategy, list):
-            strategy = strategy.tolist()
-        self.strategy = strategy
-    
-    def save_model_weights(self, pth_dir='./'):
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        for i in range(len(self.policies)):
-            torch.save(self.policies[i].state_dict(), f=pth_dir+"progPolicy_"+str(i)+".pth")
-    
-    def save_a_model_weights(self, pth_dir, i, policy):
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        torch.save(policy.state_dict(), f=pth_dir+"progPolicy_"+str(i)+".pth")
-    
-
-    def load_model_weights(self, load_dir):
-        # 加载到policies中
-        
-        models = os.listdir(load_dir)
-        log.info(f"{len(models)} policies to be loaded now.")
-        assert len(self.policies) == 0, "polices are not empty but load more polices!"
-        length = range(len(models))
-        pth_0 = load_dir+"progPolicy_"+str(0)+".pth"
-        if not os.path.exists(pth_0):
-            print(f" 0 not exists")
-            self.no_zeroth = True
-            length = range(1, len(models)+1)
-
-        for i in length:
-            pth = load_dir+"progPolicy_"+str(i)+".pth"
-            model_w = torch.load(pth)
-            tmp_policy = self.policy(self.env.name)
-            tmp_policy.load_state_dict(model_w)
-            
-            self.policies.append(tmp_policy)
-        
-
-    def get_best_response(self, adversary, cfg, callbacks, logger, epoch, init=False):
-        '''
-        fix adversary and update Protagonist
-        '''
-        print("===== in protagonist bs ====")
-        
-        # max_epoch = 1
-        if epoch == 0:
-            max_epoch = cfg.prog_epoch1  #20 # 
-        elif epoch > 0 and epoch < 5:
-            max_epoch = cfg.prog_epoch2  #20  # 
-        else: 
-            max_epoch = cfg.prog_epoch2
-        
-        # get protagonist's policy from strategy: adver用策略变化，prog更新policy
-        cur_policy = self.get_curr_policy()     # sample a AttentionModel's policy
-        # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
-        cur_model: LightningModule = hydra.utils.instantiate(cfg.model, self.env, policy=cur_policy)
-
-        # get adver's policy from its' strategy: 
-        adver_curr_policy, adver_curr_critic = adversary.get_curr_policy()
-        # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
-        adver_cur_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, self.env, 
-                                                            policy=adver_curr_policy, critic=adver_curr_critic)
-
-        # fix adver's params / not update
-        # run until can't get more reward / reward converge
-        psro_model: LightningModule = hydra.utils.instantiate(cfg.model_psro, self.env, cur_model, adver_cur_model, 
-                                                            fix_protagonist=False,
-                                                            fix_adversary=True,
-                                                            prog_polices=self.policies,
-                                                            adver_polices_and_critics=[adversary.policies, adversary.correspond_critic],
-                                                            prog_strategy=self.strategy,
-                                                            adver_strategy=adversary.strategy)
-        log.info(f"Instantiating trainer in prog bs ...")
-        trainer: RL4COTrainer = hydra.utils.instantiate(
-            cfg.trainer,
-            max_epochs=max_epoch,
-            callbacks=callbacks,
-            logger=logger,
-        )
-
-            # if e == 10:
-            #     sche_prog, sche_adv = psro_model.lr_schedulers()
-            #     if isinstance(sche_prog, torch.optim.lr_scheduler.MultiStepLR):
-            #         sche_prog.step()
-
-        if cfg.get("train"):
-            # log.info("Starting training!")
-            if init:
-                if cfg.load_prog_from_path:
-                    cur_model = cur_model.load_from_checkpoint(cfg.load_prog_from_path)
-                    cur_policy = cur_model.policy
-                    print("load psro pretrained")
-                else:
-                    trainer.fit(model=psro_model, ckpt_path=cfg.get("ckpt_path"))
-            else:
-                trainer.fit(model=psro_model, ckpt_path=cfg.get("ckpt_path"))
-            # 取训练完的val reward（最后一次）
-            curr_reward = psro_model.last_val_reward.to("cpu")      # val的batch_size改为10000， 只进行一次
-            # print("wait")
-
-        # 每次重新采样adver
-        # adver_tmp_policy, adver_tmp_critic = adversary.get_curr_policy()
-        # adver_cur_model.policy = adver_tmp_policy
-        # adver_cur_model.critic = adver_tmp_critic
-
-        return psro_model.protagonist.policy, curr_reward
-
-
-class Adversary:
-    def __init__(self, model, policy, critic, env) -> None:
-        self.model = model
-        self.policy = policy
-        self.critic = critic
-        self.env = env
-        self.policies = []
-        self.correspond_critic = []
-        self.strategy = []
-        self.no_zeroth = False
-    
-    def get_a_policy(self):
-        return self.policy(self.env.name), self.critic(self.env.name)
-    
-
-    def get_a_model(self, opponent):
-        return self.model(self.env, opponent=opponent)
-    
-    def add_policy(self, policy, critic):
-        self.policies.append(policy)
-        self.correspond_critic.append(critic)
-    
-    def get_policy_i(self, idx):
-        assert idx > -1 and idx < self.policy_number, "idx exceeds range"
-        assert type(idx) == int, "idx wrong type!"
-        return self.policies[idx], self.correspond_critic[idx]
-    
-    def get_curr_policy(self):
-        '''
-        sample a policy from strategy
-        '''
-        sample_i = sample_strategy(self.strategy)
-        sampled_policy, sampled_critic = self.get_policy_i(sample_i)
-        print(f"--- sample afversary policy: {sample_i}")
-        curr_policy, curr_critic = self.get_a_policy()
-        # worker_state_dict = [x.state_dict() for x in self.policies]
-        state_dict_policy = sampled_policy.state_dict()
-        weight_keys_policy = list(state_dict_policy.keys())
-        fed_state_dict_policy = collections.OrderedDict()
-
-        for key in weight_keys_policy:
-            fed_state_dict_policy[key] = state_dict_policy[key]
-        curr_policy.load_state_dict(fed_state_dict_policy)
-
-        state_dict_critic = sampled_critic.state_dict()
-        weight_keys_critic = list(state_dict_critic.keys())
-        fed_state_dict_critic = collections.OrderedDict()
-        for key in weight_keys_critic:
-            fed_state_dict_critic[key] = state_dict_critic[key]
-        curr_critic.load_state_dict(fed_state_dict_critic)
-        # #### update fed weights to fl model
-        # curr_policy.load_state_dict(fed_state_dict)
-
-        # worker_state_dict = [x.state_dict() for x in self.correspond_critic]
-        # weight_keys = list(worker_state_dict[0].keys())
-        # fed_state_dict = collections.OrderedDict()
-        # for key in weight_keys:
-        #     key_sum = 0
-        #     for i in range(self.strategy_length):
-        #         key_sum = key_sum + worker_state_dict[i][key] * self.strategy[i]
-        #     fed_state_dict[key] = key_sum
-        # #### update fed weights to fl model
-        # curr_critic.load_state_dict(fed_state_dict)
-        return curr_policy, curr_critic
-    
-    @property
-    def policy_number(self):
-        return len(self.policies)
-    
-    @property
-    def strategy_length(self):
-        return len(self.strategy)
-    
-    def update_strategy(self, strategy):
-        assert sum(strategy) < 1. + 1e-5, "strategy prob is wrong!"
-        assert len(strategy) == self.policy_number, "strategy size not equal to policies"
-        if not isinstance(strategy, list):
-            strategy = strategy.tolist()
-        self.strategy = strategy
-    
-    def save_model_weights(self, pth_dir='./'):
-
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        pth_dir_policy = pth_dir+"_policy/"
-        if not os.path.exists(pth_dir_policy):
-            os.mkdir(pth_dir_policy)
-
-        pth_dir_critic = pth_dir+"_critic/"
-        if not os.path.exists(pth_dir_critic):
-            os.mkdir(pth_dir_critic)
-
-        for i in range(len(self.policies)):
-            torch.save(self.policies[i].state_dict(), f=pth_dir_policy+"adverPolicy_"+str(i)+".pth")
-            torch.save(self.correspond_critic[i].state_dict(), f=pth_dir_critic+"adverCritic_"+str(i)+".pth")
-    
-    def save_a_model_weights(self, pth_dir, i, policy, critic):
-
-        if not os.path.exists(pth_dir):
-            os.mkdir(pth_dir)
-
-        pth_dir_policy = pth_dir+"_policy/"
-        if not os.path.exists(pth_dir_policy):
-            os.mkdir(pth_dir_policy)
-
-        pth_dir_critic = pth_dir+"_critic/"
-        if not os.path.exists(pth_dir_critic):
-            os.mkdir(pth_dir_critic)
-
-        torch.save(policy.state_dict(), f=pth_dir_policy+"adverPolicy_"+str(i)+".pth")
-        torch.save(critic.state_dict(), f=pth_dir_critic+"adverCritic_"+str(i)+".pth")
-    
-
-    def load_model_weights(self, load_dir):
-        # 加载到policies中
-        load_dir_policy = load_dir + "_policy/"
-        policies = os.listdir(load_dir_policy)
-        log.info(f"{len(policies)} policies to be loaded now.")
-        # assert len(self.policies) == 0 and len(self.correspond_critic) == 0, "adver polices are not empty but load more polices!"
-        if not len(self.policies) == 0:
-            print("reload adv from ", load_dir)
-            self.policies = []
-            self.correspond_critic = []
-
-        self.no_zeroth = False  # 每次初始化为false
-        length = range(len(policies))
-        pth_0 = load_dir_policy+"adverPolicy_"+str(0)+".pth"
-        if not os.path.exists(pth_0):
-            print(f"no 0 to load")
-            self.no_zeroth = True
-            length = range(1, len(policies)+1)
-
-        for i in length:
-            pth = load_dir_policy+"adverPolicy_"+str(i)+".pth"
-            policy_w = torch.load(pth)
-            tmp_policy = self.policy(self.env.name)
-            tmp_policy.load_state_dict(policy_w)
-            self.policies.append(tmp_policy)
-        print(f"adver num is {self.policy_number}")
-        load_dir_critic = load_dir + "_critic/"
-        for i in length:
-            pth = load_dir_critic+"adverCritic_"+str(i)+".pth"
-            critic_w = torch.load(pth)
-            tmp_critic = self.critic(self.env.name)
-            tmp_critic.load_state_dict(critic_w)
-            self.correspond_critic.append(tmp_critic)
-
-    def get_best_response(self, protagonist, cfg, callbacks, logger):
-        '''
-        fix Protagonist and update adversary
-        '''
-        print("===== in adversary bs ====")
-        
-        # get protagonist's policy from strategy: params add
-        prog_policy = protagonist.get_curr_policy()
-        # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
-        prog_model: LightningModule = hydra.utils.instantiate(cfg.model, self.env, policy=prog_policy)
-    
-        # get adver's policy from its' strategy: params add
-        cur_policy, cur_critic = self.get_curr_policy()     # PPOContinous's policy
-        # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")
-        cur_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, self.env, 
-                                                             policy=cur_policy, critic=cur_critic)
-    
-
-        # fix prog's params / not update
-        # run until can't get more reward / reward converge
-        psro_model: LightningModule = hydra.utils.instantiate(cfg.model_psro, self.env, prog_model,
-                                                              cur_model, 
-                                                              fix_protagonist=True,
-                                                              fix_adversary=False,
-                                                              prog_polices=protagonist.policies,
-                                                            adver_polices_and_critics=[self.policies, self.correspond_critic],
-                                                            prog_strategy=protagonist.strategy,
-                                                            adver_strategy=self.strategy)
-
-        max_epoch = cfg.adver_epoch
-        if cfg.get("train"):
-            log.info(f"Instantiating trainer in adver bs ...")
-            trainer: RL4COTrainer = hydra.utils.instantiate(
-                    cfg.trainer,
-                    max_epochs=max_epoch,
-                    callbacks=callbacks,
-                    logger=logger,
-                )
-            
-            # log.info("Starting training!")
-            
-            trainer.fit(model=psro_model, ckpt_path=cfg.get("ckpt_path"))
-            curr_reward = psro_model.last_val_reward.to("cpu")
-        
-        
-
-        return psro_model.adversary.policy, psro_model.adversary.critic, curr_reward
-
-def sample_strategy(distrib):
-    strategy_is = random.choices(list(range(len(distrib))), weights=distrib)
-    # print("in func", strategy_is)
-    strategy_i = strategy_is[0]
-    return strategy_i
 
 
 @utils.task_wrapper
@@ -574,11 +88,20 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     if cfg.get("train"):
 
         try:
-            val_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
+            val_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
             val_data = env.load_data(val_data_pth)
             val_dataset = TensorDictDataset(val_data)
-            val_dl = DataLoader(val_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
-        
+            val_dl = DataLoader(val_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+            # 存payoff表，两agent的strategy
+            save_payoff_pth = logger[0].save_dir+'/psro/'
+            if not os.path.exists(save_payoff_pth):
+                os.mkdir(save_payoff_pth)
+
+            stoch_data_dir = logger[0].save_dir+'/adv_stoch_data/'
+            if not os.path.exists(stoch_data_dir):
+                os.mkdir(stoch_data_dir)
+
             # 各自初始化1个policy
             protagonist = Protagonist(AttentionModel, AttentionModelPolicy, env)
             adversary = Adversary(PPOContiAdvModel, PPOContiAdvPolicy, CriticNetwork, env)
@@ -608,18 +131,48 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             row_payoff = []
             protagonist_model.policy = protagonist.get_policy_i(0)
             adversary_model.policy, adversary_model.critic = adversary.get_policy_i(0)
-            # protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", 0, protagonist_model.policy)
-            # adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
+            protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", 0, protagonist_model.policy)
+            adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", 0, adversary_model.policy, adversary_model.critic)
             
             
             # td_init = env.reset(val_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-            rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model)[0] for batch in val_dl])
-            payoff = rewards.mean().item()
-            # payoff = play_game(env, batch, protagonist_model, adversary_model)
-            row_payoff.append(payoff)
-            payoff_prot.append(row_payoff)
 
+            # rewards = torch.tensor([play_game(env, batch.clone(), protagonist_model, adversary_model)[0] for batch in val_dl])
+            # payoff = rewards.mean().item()
+            # row_payoff.append(payoff)
+            # payoff_prot.append(row_payoff)
+            for sk in stochdata_key_mapping[env.name]:
+                stoch_data = {sk: {}}     # {"stochastic_demand": {0: tensordict (data_size, ), 1:}}
+            rewards_rl = []
+            rewards_baseline = []
+            payoff_prot, rewards_rl, rewards_baseline, stoch_data = update_payoff(cfg, env, val_data_pth, 
+                                                                      stoch_data, stoch_data_dir,
+                                                                        protagonist, adversary, payoff_prot,
+                                        [0], [0], rewards_rl, rewards_baseline, cfg.eval_baseline, save_payoff_pth,)
+
+            rl_rewards_psro = eval_oneprog_adv_allgraph(rewards_rl, adversary.strategy)
+            rl_mean, rl_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
+
+            if cfg.eval_baseline:
+                bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_baseline, adversary.strategy)
+                bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
+            else:
+                bl_rewards_psro = None
+                bl_mean, bl_var = None, None
+            np.savez(save_payoff_pth+"rl_bl_byadv_iter"+str(0)+".npz",
+                        rl_rewards=rewards_rl,  # 所哟图上，不同adv下，rewards
+                        bl_rewards=rewards_baseline,
+                        rl_rewards_psro=rl_rewards_psro,    # adv在所有图上rewards
+                        bl_rewards_psro=bl_rewards_psro,
+                        prog_strategy=protagonist.strategy,
+                        adver_strategy=adversary.strategy,
+                        rl_mean=rl_mean,    # 所有图mean
+                        rl_var=rl_var,
+                        bl_mean=bl_mean,
+                        bl_var=bl_var)
+            
             # compute nashconv
+            payoff = payoff_prot[0][0]
             utility_1 = payoff
             utility_2 = -payoff
             nashconv_lst = []
@@ -629,10 +182,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             adver_br_lst = []
 
             # 
-            # 存payoff表，两agent的strategy
-            save_payoff_pth = logger[0].save_dir+'/psro/'
-            if not os.path.exists(save_payoff_pth):
-                os.mkdir(save_payoff_pth)
+            
 
             print("init payoff:", payoff_prot)
             print(protagonist.policy_number)
@@ -665,16 +215,27 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 nashconv = utility_1_br - utility_1 + utility_2_br - utility_2
                 nashconv_lst.append(nashconv)
 
-                # 更新新加入policy的payoff矩阵
+                # 更新新加入policy的payoff矩阵: 先更新hang列，再shu列
                 row_range = [protagonist.policy_number - 1]
                 col_range = range(adversary.policy_number)
-                update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
-                
+                # update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
+                # print(f"shoud no change: before update payoff in {e}: num of rl and bl eval data {len(rewards_rl)} {len(rewards_baseline)}")
+                payoff_prot, rewards_rl, rewards_baseline, stoch_data = update_payoff(cfg, env, val_data_pth, stoch_data, stoch_data_dir,
+                                                                                      protagonist, adversary, payoff_prot,
+                                        row_range, col_range, rewards_rl, rewards_baseline, cfg.eval_baseline, save_payoff_pth)
+                # print(f"shoud no change: after update payoff in {e}: num of rl and bl eval data {len(rewards_rl)}  {len(rewards_baseline)}")
+
                 row_range = range(protagonist.policy_number -1)
                 col_range = [adversary.policy_number - 1]
-                update_payoff(cfg, env, val_data_pth, protagonist, adversary, payoff_prot, row_range, col_range)
-
+                print(f" before update payoff in {e}: num of rl and bl eval data {len(rewards_rl)}  {len(rewards_baseline)}")
+                payoff_prot, rewards_rl, rewards_baseline, stoch_data = update_payoff(cfg, env, val_data_pth, stoch_data, stoch_data_dir,
+                                                                                      protagonist, adversary, payoff_prot,
+                                        row_range, col_range, rewards_rl, rewards_baseline, cfg.eval_baseline, save_payoff_pth)
+                print(f" after update payoff in {e}: num of rl and bl eval data {len(rewards_rl)}  {len(rewards_baseline)}")
+                
                 print(f"payoff_prot: {payoff_prot}")
+                print(f"rewards_rl: {rewards_rl}")
+                print(f"rewards_baseline: {rewards_baseline}")
 
                 ## 根据payoff, 求解现在的nash eq,得到player’s strategies
                 # payoff_prot = [[0.5, 0.6], [0.1, 0.9]]
@@ -694,7 +255,17 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 utility_1 = curr_reward
                 utility_2 = -curr_reward
 
-                
+                # 每轮更新一次rl和bl的mean，var： reward_rl [iter, datasize,]
+                rl_rewards_psro = eval_oneprog_adv_allgraph(rewards_rl, adversary_strategy)
+                rl_mean, rl_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
+
+                if cfg.eval_baseline:
+                    bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_baseline, adversary_strategy)
+                    bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
+                else:
+                    bl_rewards_psro = None
+                    bl_mean, bl_var = None, None
+
                 np.savez(save_payoff_pth+ 'info.npz', 
                     payoffs=payoff_prot,       # key=value
                     iter_reward=iter_reward,
@@ -702,25 +273,38 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     prog_br_lst=prog_br_lst,
                     adver_br_lst=adver_br_lst,
                     adver_strategy=adversary.strategy,
-                    prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
+                    prog_strategy=protagonist.strategy,
+                    )  # 保存的文件名，array_name是随便起的，相当于字典的key
 
-            
+                np.savez(save_payoff_pth+"rl_bl_byadv_iter"+str(e+1)+".npz",
+                        rl_rewards=rewards_rl,  # 所有图上，不同adv下，rewards， [adv/iter个数, datasize]
+                        bl_rewards=rewards_baseline,
+                        rl_rewards_psro=rl_rewards_psro,    # adv在所有图上rewards,乘策略后 [datasize]
+                        bl_rewards_psro=bl_rewards_psro,
+                        adver_strategy=adversary.strategy,
+                        prog_strategy=protagonist.strategy,
+                        rl_mean=rl_mean,    # adv下所有图mean rewards,  和payoff第一行应该有出入（除非asv strategy是纯策略） 
+                        rl_var=rl_var,
+                        bl_mean=bl_mean,
+                        bl_var=bl_var)
         
         except Exception as e:
             print(f"error :{e}")
 
         finally:        # 
-            protagonist.save_model_weights(logger[0].save_dir+"/models_weights/")   # logger是list
-            adversary.save_model_weights(logger[0].save_dir+"/models_weights")
+            protagonist.save_model_weights(logger[0].save_dir+"/models_weights_final/")   # logger是list
+            adversary.save_model_weights(logger[0].save_dir+"/models_weights_final")
             
-            np.savez(save_payoff_pth+ 'info.npz', 
+            np.savez(save_payoff_pth+ 'info_final.npz', 
                     payoffs=payoff_prot,       # key=value
                     iter_reward=iter_reward,
                     nashconv_lst=nashconv_lst,     # nashconv
                     prog_br_lst=prog_br_lst,
                     adver_br_lst=adver_br_lst,
                     adver_strategy=adversary.strategy,
-                    prog_strategy=protagonist.strategy)  # 保存的文件名，array_name是随便起的，相当于字典的key
+                    prog_strategy=protagonist.strategy,
+                    rl_rewards=rewards_rl,
+                    bl_rewards=rewards_baseline)  # 保存的文件名，array_name是随便起的，相当于字典的key
             
             print("adver strategy: ", adversary.strategy)
             print("prog strategy: ", protagonist.strategy)

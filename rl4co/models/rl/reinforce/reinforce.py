@@ -60,6 +60,10 @@ class REINFORCE(RL4COLitModule):
 
     def calculoss_step(self, td, batch, phase, dataloader_idx: int = None):
         # Perform forward pass (i.e., constructing solution and computing log-likelihoods)
+        if phase == "test" or phase == "val":
+            self.policy.eval()
+        elif phase == "train":
+            self.policy.train()
         out = self.policy(td, self.env, phase=phase)
 
         # Compute loss

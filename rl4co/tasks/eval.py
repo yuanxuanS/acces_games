@@ -92,7 +92,7 @@ class EvalBase:
         raise NotImplementedError("Implement in subclass")
 
     def _get_rewards(self, td, out):
-        if self.env.name == "scp":      # in scp, reward in recorded in every step
+        if self.env.name == "scp" or self.env.name == "opsa":      # in scp, reward in recorded in every step
             return out["reward"]
         else:
             return self.env.get_reward(td, out["actions"])
@@ -108,6 +108,7 @@ class GreedyEval(EvalBase):
     def _inner(self, policy, td):
         out = policy(
             td.clone(),
+            self.env,
             decode_type="greedy",
             num_starts=0,
             return_actions=True,

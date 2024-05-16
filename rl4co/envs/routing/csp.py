@@ -11,7 +11,7 @@ from torchrl.data import (
 )
 
 from rl4co.envs.common.base import RL4COEnvBase
-from rl4co.utils.ops import gather_by_index, get_tour_length
+from rl4co.utils.ops import gather_by_index, get_tour_length, get_padded_tour_length
 from rl4co.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -44,8 +44,8 @@ class CSPEnv(RL4COEnvBase):
         num_loc: int = 20,
         min_loc: float = 0,
         max_loc: float = 1,
-        min_cover: float = 0.1,
-        max_cover: float = 0.3,
+        min_cover: float = 0.,
+        max_cover: float = 0.25,
         td_params: TensorDict = None,
         **kwargs,
     ):
@@ -86,7 +86,7 @@ class CSPEnv(RL4COEnvBase):
         '''
         batch_size = td.batch_size[0]
         current_node = td["action"]
-        first_node = current_node if td["i"].all() == 0 else td["first_node"]       # 看起来这一句和td["i"]都没什么用
+        first_node = current_node if td["i"].all() == 0 else td["first_node"]       # 决定fisrt node是哪个：
 
         # get covered node of current node
         locs = td["locs"]       # [batch, num_loc,2]
@@ -282,7 +282,7 @@ class CSPEnv(RL4COEnvBase):
 
         # Gather locations in order of tour and return distance between them (i.e., -reward)
         locs_ordered = gather_by_index(td["locs"], actions)
-        return -get_tour_length(locs_ordered)
+        return -get_padded_tour_length(locs_ordered)
 
     @staticmethod
     def check_solution_validity(td: TensorDict, actions: torch.Tensor):
@@ -318,7 +318,7 @@ class CSPEnv(RL4COEnvBase):
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 None).squeeze(-1).float().to(self.device)
         # 不能超过max_cover范围
-        stochastic_maxcover = torch.clamp(stochastic_maxcover, max=self.max_cover)
+        stochastic_maxcover = torch.clamp(stochastic_maxcover, min=self.min_cover, max=self.max_cover)
         # min cover: 仅为了initembedding中
         min_cover = torch.ones_like(max_cover) * self.min_cover
         return TensorDict({"locs": locs,
@@ -402,7 +402,7 @@ class CSPEnv(RL4COEnvBase):
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
         # 不能超过max_cover范围
-        stochastic_maxcover = torch.clamp(stochastic_maxcover, max=self.max_cover)
+        stochastic_maxcover = torch.clamp(stochastic_maxcover, min=self.min_cover, max=self.max_cover)
         td.set("stochastic_maxcover", stochastic_maxcover)
         return td
     

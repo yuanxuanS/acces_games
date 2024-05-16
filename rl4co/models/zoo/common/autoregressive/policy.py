@@ -62,7 +62,7 @@ class AutoregressivePolicy(nn.Module):
         mask_inner: bool = True,
         use_graph_context: bool = True,
         sdpa_fn: Optional[Callable] = None,
-        train_decode_type: str = "sampling",
+        train_decode_type: str = "sampling",    #"greedy", #
         val_decode_type: str = "greedy",
         test_decode_type: str = "greedy",
         **unused_kw,

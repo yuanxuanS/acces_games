@@ -85,13 +85,22 @@ def get_distance(x: Tensor, y: Tensor):
 def get_tour_length(ordered_locs):
     """Compute the total tour distance for a batch of ordered tours.
     Computes the L2 norm between each pair of consecutive nodes in the tour and sums them up.
-
+     从原点出发，回到原点的版本，（最后padding depot也对）
     Args:
         ordered_locs: Tensor of shape [batch_size, num_nodes, 2] containing the ordered locations of the tour
     """
     ordered_locs_next = torch.roll(ordered_locs, 1, dims=-2)
     return get_distance(ordered_locs_next, ordered_locs).sum(-1)
 
+def get_padded_tour_length(ordered_locs):
+    '''
+    if tour is padded for alignment, attention for the padding nodes
+    用于不回到原点，而且结尾会padding最后一个node的版本
+    '''
+    ordered_locs_next = torch.roll(ordered_locs, -1, dims=-2)
+    # 最后一个node变成第一个，还原为原来
+    ordered_locs_next[:, -1, :] = ordered_locs[:, -1, :]
+    return get_distance(ordered_locs_next, ordered_locs).sum(-1)
 
 def get_num_starts(td):
     """Returns the number of possible start nodes for the environment based on the action mask"""
