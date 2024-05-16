@@ -230,12 +230,13 @@ class CW_svrp:
         
         et = time.time() - st
         rewards = self._get_reward(self.td, self.routes)     #[batch]
-        mean_reward = rewards.mean()
-        var_ = rewards.var()
+        mean_reward = rewards.mean().cpu().item()
+        var_ = rewards.var().cpu().item()
         print('------CW-----')
         # print(f'Routes found are:{self.routes}, rewards are {rewards}, mean reward is {mean_reward} ')
         
         routes = convert_to_fit_npz(self.routes)
+
         return {"routes":routes,
                 "rewards": rewards,
                 "mean reward": mean_reward,
