@@ -194,14 +194,14 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 log.info(f" psro training epoch {e}")
                 bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger, epoch=e)
                 protagonist.add_policy(bs_adversary)
-                utility_1_br = prog_bs_reward
-                prog_br_lst.append(prog_bs_reward)
+                # utility_1_br = prog_bs_reward
+                # prog_br_lst.append(prog_bs_reward)
                 protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e+1, bs_adversary)
 
                 bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
                 adversary.add_policy(bs_protagonist, bs_protagonist_critic)
-                utility_2_br = -adver_bs_reward
-                adver_br_lst.append(adver_bs_reward)
+                # utility_2_br = -adver_bs_reward
+                # adver_br_lst.append(adver_bs_reward)
                 adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", e+1, bs_protagonist, bs_protagonist_critic)
 
                 # 判断是否达到平衡
@@ -211,9 +211,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 else:
                     print(f"curr prog reward: {prog_bs_reward}, curr adver reward:{adver_bs_reward} in epoch {e}")
 
-                # compute nashconv
-                nashconv = utility_1_br - utility_1 + utility_2_br - utility_2
-                nashconv_lst.append(nashconv)
+                
 
                 # 更新新加入policy的payoff矩阵: 先更新hang列，再shu列
                 row_range = [protagonist.policy_number - 1]
@@ -237,6 +235,20 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 print(f"rewards_rl: {rewards_rl}")
                 print(f"rewards_baseline: {rewards_baseline}")
 
+                # 
+                prog_bs_stra = np.zeros(len(protagonist.strategy)+1)
+                prog_bs_stra[-1] = 1.
+                utility_1_br = get_bs_utility(payoff_prot, prog_bs_stra, adversary.strategy, True)
+                prog_br_lst.append(utility_1_br)
+
+                adv_bs_stra = np.zeros(len(adversary.strategy)+1)
+                adv_bs_stra[-1] = 1.
+                utility_2_br = get_bs_utility(payoff_prot, protagonist.strategy, adv_bs_stra, False)
+                adver_br_lst.append(utility_2_br)
+                # compute nashconv
+                nashconv = max(utility_1_br - utility_1, 0) + max(utility_2_br - utility_2, 0)
+                nashconv_lst.append(nashconv)
+
                 ## 根据payoff, 求解现在的nash eq,得到player’s strategies
                 # payoff_prot = [[0.5, 0.6], [0.1, 0.9]]
                 eq = nash_solver(np.array(payoff_prot))
@@ -246,14 +258,14 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 protagonist.update_strategy(protagonist_strategy)
                 adversary.update_strategy(adversary_strategy)
 
-                # 测试现在的reward
-                curr_reward = eval(payoff_prot, protagonist.strategy, adversary.strategy)
-                iter_reward.append(curr_reward)
-                log.info(f"curr reward is {curr_reward}")
+                # 
+                curr_ne = eval(payoff_prot, protagonist.strategy, adversary.strategy)
+                iter_reward.append(curr_ne)
+                log.info(f"curr nash equal is {curr_ne}")
 
                 # update utility
-                utility_1 = curr_reward
-                utility_2 = -curr_reward
+                utility_1 = curr_ne
+                utility_2 = -curr_ne
 
                 # 每轮更新一次rl和bl的mean，var： reward_rl [iter, datasize,]
                 rl_rewards_psro = eval_oneprog_adv_allgraph(rewards_rl, adversary_strategy)
@@ -324,28 +336,26 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         data = np.load(cfg.prog_npz_pth)  # 加载
         payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
-        if adversary_tmp.no_zeroth:
-            print(f"before: adver strate is {adver_strategy}")
-            adver_strategy = adver_strategy[1:]
-            print(f"after: adver strate is {adver_strategy}")
-
         prog_strategy = data['prog_strategy']
-        if protagonist_tmp.no_zeroth:
-            print(f"before: prog strate is {prog_strategy}")
-            prog_strategy = prog_strategy[1:]
-            print(f"after:prog strate is {prog_strategy}")
+        # if adversary_tmp.no_zeroth:
+        #     print(f"before: adver strate is {adver_strategy}")
+        #     adver_strategy = adver_strategy[1:]
+        #     print(f"after: adver strate is {adver_strategy}")
+
+        # prog_strategy = data['prog_strategy']
+        # if protagonist_tmp.no_zeroth:
+        #     print(f"before: prog strate is {prog_strategy}")
+        #     prog_strategy = prog_strategy[1:]
+        #     print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
+        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         print(f"load testdata from {test_data_pth}")
         test_data = env.load_data(test_data_pth)
-        print(f" test size is {test_data.batch_size}")
+        # print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
-        test_dataset = TensorDictDataset(test_data)
-        test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
 
         payoff_eval = []
-        payoff_eval_var = []
         if cfg.get("eval_withadv"):
             # 有adver的eval
             print("eval with adversary")
@@ -358,42 +368,65 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 another = "_another_"
             else:
                 another = "_this_"
+            
+            stoch_data_dir = cfg.evaluate_prog_dir+"/adv_stoch_data/"
+            for sk in stochdata_key_mapping[env.name]:
+                stoch_data = {sk: {}}
             st = time.time()
-            rewards_whole_g = None
+            rewards_rl = []
             for r in range(len(prog_strategy)):     # 当error停止，出现policy个数-strategy个数 = 1
                 protagonist_model.policy = protagonist_tmp.get_policy_i(r)
-                payoff_diff_adv = []
-                payoff_diff_adv_var = []
                 for c in range(len(adver_strategy)):
 
                     adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
-                    # td_init = env.reset(test_data.clone()).to(device)
-                    # payoff = play_game(env, td_init, protagonist_model, adversary_model)
-                    rewards = []
-                    rewards_all = None
-                    for batch in test_dl:
-                        re, re_allg = play_game(env, batch.clone(), protagonist_model, adversary_model)
-                        rewards.append(re)
-                        if rewards_all == None:
-                            rewards_all = re_allg
+
+                    rl_rewards = [] # [batch iter,]
+                    rl_rewards_all = None   # 1dim, [data_size's size
+
+                    bl_rewards = [] # batch iter,
+                    bl_rewards_var = [] # batch iter,
+                    bl_rewards_all = None       # batch's size
+
+                    test_data, stoch_dict, stoch_data = load_stoch_data(env, test_data, stoch_data_dir, stoch_data, c)
+                    test_data = test_data.to(device)
+                    test_dataset = TensorDictDataset(test_data)
+                    test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                    stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
+                    stoch_dataset = TensorDictDataset(stoch_dict)
+                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                    for batch, stoch_batch in zip(test_dl, stoch_dl):
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                                            protagonist_model, adversary_model, False, "", False,)
+                        batch_rl_mean, batch_rl_allg = rl_res
+                        batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
+
+                        rl_rewards.append(batch_rl_mean)     
+                        if rl_rewards_all == None:
+                            rl_rewards_all = batch_rl_allg
                         else:
-                            rewards_all = torch.cat((rewards_all, re_allg), dim=0)
-                    payoff = torch.tensor(rewards).mean().item()
-                    payoff_diff_adv.append(payoff)
-                    print(f"r,c :{r},{c}")
-                    if rewards_whole_g == None:
-                        rewards_whole_g = rewards_all[:, None]
-                    else:
-                        rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
-
-                    # 
-                payoff_eval.append(payoff_diff_adv)
-
+                            rl_rewards_all = torch.cat((rl_rewards_all, batch_rl_allg), dim=0)
+                        
+                        bl_rewards.append(batch_l_mean)
+                        bl_rewards_var.append(batch_bl_var)
+                        if bl_rewards_all == None:
+                            bl_rewards_all = batch_bl_allg
+                        else:
+                            bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
                 
-            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.val_data_size, len(prog_strategy), len(adver_strategy))
-            reward_eval = eval(payoff_eval, prog_strategy, adver_strategy)
-            rewards_graphs = eval_allgraph(rewards_whole_g.cpu().numpy(), prog_strategy, adver_strategy)
-            eval_var = rewards_graphs.var()
+                    # 
+                    rewards_rl.append(rl_rewards_all.cpu().tolist())
+            rewards_rl = np.array(rewards_rl)
+            print("shape ", rewards_rl.shape)
+            rewards_rl = rewards_rl.T
+            print("shape ", rewards_rl.shape)
+            rewards_rl = rewards_rl.reshape(cfg.model_psro.test_data_size, len(prog_strategy), len(adver_strategy))
+            print("shape ", rewards_rl.shape)
+            # rewards_rl = rewards_rl.transpose(0, 2,1)
+            print("shape ", rewards_rl.shape)
+            rl_rewards_psro = eval_allgraph(rewards_rl, prog_strategy, adver_strategy)
+            reward_eval, eval_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
 
             time_ = time.time()-st
             save_eval_pth = "eval_with"+another+"adv.npz"
@@ -401,30 +434,32 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
             print("eval without adversary")
             st = time.time()
-            rewards_whole_g = None
+            rewards_rl = []
             for i in range(len(prog_strategy)):
                 protagonist_model.policy = protagonist_tmp.get_policy_i(i)
-                # td_init = env.reset(test_data.clone()).to(device)
-                # payoff = play_game(env, td_init, protagonist_model, None)
+
+                test_data = test_data.to(device)
+                test_dataset = TensorDictDataset(test_data)
+                test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
                 rewards = []
                 rewards_all = None
                 for batch in test_dl:
-                    re, re_allg = play_game(env, batch.clone(), protagonist_model, adversary_model)
+                    rl_res, bl_res, _ = play_game(env, batch.clone(), stoch_td=None, stoch_data=None, adv_idx=0,
+                                            prog=protagonist_model, adver=None, new_stoch_data=False)
+                    re, re_allg = rl_res
                     rewards.append(re)
                     if rewards_all == None:
                         rewards_all = re_allg
                     else:
                         rewards_all = torch.cat((rewards_all, re_allg), dim=0)
-                payoff = torch.tensor(rewards).mean().item()
-                payoff_eval.append(payoff)
-                if rewards_whole_g == None:
-                    rewards_whole_g = rewards_all[:, None]
-                else:
-                    rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
-            reward_eval = eval_noadver(payoff_eval, prog_strategy)
+                # payoff = torch.tensor(rewards).mean().item()
+                rewards_rl.append(rewards_all.cpu().tolist())
+            # reward_eval = eval_noadver(rewards_rl, prog_strategy)
             # 在instance/图 上分别计算psro下的reward， 再计算方差
-            rewards_graphs = eval_noadver_allgraph(rewards_whole_g.cpu().numpy(), prog_strategy)
+            rewards_graphs = eval_noadver_allgraph(np.array(rewards_rl).T, prog_strategy)
             eval_var = rewards_graphs.var()
+            reward_eval = rewards_graphs.mean()
 
             time_ = time.time()-st
             save_eval_pth = "eval_withoutadv.npz"
@@ -434,7 +469,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     adv_pth=adv_pth,
                     eval_reward=reward_eval,
                     eval_var=eval_var,
-                    eval_payoffs=payoff_eval,       # key=value
+                    eval_payoffs=rewards_rl,       # key=value
                     eval_vars=eval_var,
                     eval_time=time_,
                     eval_data=test_data_pth,

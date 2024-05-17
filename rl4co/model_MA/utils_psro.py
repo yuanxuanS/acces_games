@@ -217,6 +217,25 @@ def update_payoff(cfg, env, data_pth, stoch_data, save_dir,
             payoff_prot.append(new_row_payoff)
     return payoff_prot, rewards_rl, rewards_bl, stoch_data
 
+def get_bs_utility(payoff, prog_strategy, adv_strategy, prog_bs=True):
+    '''
+    payoff: nested list, updated one
+    prog_strategy: if prog bs, 
+
+    '''
+    if prog_bs:
+        A = np.array(payoff)
+        A = A[:, :-1]
+        rps = nash.Game(A)
+        result = rps[prog_strategy, adv_strategy]
+        return result[0]
+    else:
+        A = np.array(payoff)
+        A = A[:-1, :]
+        rps = nash.Game(A)
+        result = rps[prog_strategy, adv_strategy]
+        return result[1]
+
 
 def eval(payoff, prog_strategy, adver_strategy):
     '''
