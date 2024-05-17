@@ -109,13 +109,13 @@ class OPSAEnv(RL4COEnvBase):
             part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
-            tmp = td_load_part["real_prob"]
+            real_prob = td_load_part["real_prob"]
             weather = td_load_part["weather"]
         elif "test" in fpath:
             part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
-            tmp = td_load_part["real_prob"]
+            real_prob = td_load_part["real_prob"]
             weather = td_load_part["weather"]
         else:
             # part_pth = "/home/panpan/rl4co/data/opsa/train_part_data.npz"
@@ -133,21 +133,21 @@ class OPSAEnv(RL4COEnvBase):
         
             # influence prize by attack prob
             # tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
-            tmp = self.get_stoch_var(attack_prob.to("cpu"),
+            real_prob = self.get_stoch_var(attack_prob.to("cpu"),
                                      locs.to("cpu"),
                                      weather[:, None, :].
                                      repeat(1, self.num_loc, 1).to("cpu"),
                                      None).squeeze(-1).float().to(self.device)
-            tmp = torch.clamp(tmp, max=1.)
+            real_prob = torch.clamp(real_prob, max=1.)
         
         
-        tmp = tmp * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
-        attacked = tmp < attack_prob
+        real_prob = real_prob * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
+        attacked = real_prob > attack_prob
         stoch_cost = cost.clone() * attacked
         
 
         td_load.set("attack_prob", attack_prob)
-        td_load.set("real_prob", tmp)       # 先固定real prob看效果
+        td_load.set("real_prob", real_prob)       # 先固定real prob看效果
         td_load.set("stochastic_cost", stoch_cost)
         td_load.set("weather", weather)
 
@@ -429,15 +429,15 @@ class OPSAEnv(RL4COEnvBase):
         '''
         batch_size = td["cost"].size(0)
         locs_cust = td["locs"].clone()
-        stochastic_prob = self.get_stoch_var(td["attack_prob"].to("cpu"),
+        real_prob = self.get_stoch_var(td["attack_prob"].to("cpu"),
                                                 locs_cust.to("cpu"), 
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
 
         # reset cost by new attack prob
-        tmp = td["real_prob"]
-        attacked = tmp < stochastic_prob
+        attack_prob = td["attack_prob"]
+        attacked = real_prob > attack_prob
         cost = td["cost"]
         stoch_cost = cost.clone() * attacked
         td.set("stochastic_cost", stoch_cost)
