@@ -31,6 +31,8 @@ baselines_mapping = {
 
 stochdata_key_mapping = {
     "svrp": ["real_demand"],        # reset_stochastic_var()里改变的
+    "csp": ["stochastic_maxcover"],
+    "opsa": ["attack_prob", ]   # attack_prob 不变； 随机变量tmp=real-prob, 决定stoch_cost (cost已知)
 }
 
     
@@ -69,19 +71,21 @@ def nash_solver(payoff):
         assert equilibrium is not None
         return equilibrium
 
-def load_stoch_data(env, td, stoch_dir, stoch_data, adv_idx):
+def load_stoch_data(env, stoch_dir, stoch_data, adv_idx):
     '''
-    从指定路径加载随机变量数据，保存在stoch_data里，并更新data(td)
+    从指定路径加载指定adv下的随机变量数据，保存在stoch_data里，并更新data(td)
+    stoch_dict: 当下adv_idx的所有随机数据
+    stoch_data: 所有adv下的随机数据
     '''
     stochdata_key_lst = stochdata_key_mapping[env.name]
     stoch_dict = {}
     for sk in stochdata_key_lst:
         stoch_pth = stoch_dir + "adv_"+str(adv_idx) + ".npz"
         stoch_data_ = torch.from_numpy(dict(np.load(stoch_pth))["arr_0"])
-        td.set(sk, stoch_data_)
         stoch_dict[sk] = stoch_data_
-        stoch_data[sk][adv_idx] = stoch_data_
-    return td, stoch_dict, stoch_data
+        if stoch_data != None:
+            stoch_data[sk][adv_idx] = stoch_data_
+    return stoch_dict, stoch_data
 
 def update_stoch_data(env, data, new_stoch_data, adv_idx):
     '''
@@ -271,7 +275,9 @@ def eval_oneprog_adv_allgraph(rewards_graph, adv_strategy):
     reward_adv_graphs = np.matmul(rewards_graph, np.array(adv_strategy))
     return reward_adv_graphs
 
-def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, new_stoch_data=False, save_pth = "", eval_baseline=False, baseline="cw", baseline_result_fn=""):
+def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, 
+              new_stoch_data=False, save_pth = "", 
+              eval_baseline=False, baseline="cw", baseline_result_fn=""):
     '''
         加载batch数据, 返回一次evaluation的reward: prog-adver
         prog: AM model
@@ -329,6 +335,27 @@ def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, ne
             baseline_rewards = torch.tensor(baseline_rewards)
 
     return [mean_reward, ret["reward"]], [baseline_mean, baseline_var, baseline_rewards], stoch_data
+
+
+def play_game_heuristic(env, td_init, baseline, adv_idx, stoch_td, save_result_fn):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    td_init = env.reset(td_init).to(device)
+
+    stochdata_key_lst = stochdata_key_mapping[env.name]
+    for sk in stochdata_key_lst:
+        td_init.set(sk, stoch_td[sk])
+        td = td_init.clone()
+    print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]}")
+
+    # eval baseline under same adver data
+    baseline_mean, baseline_var, baseline_rewards = None, None, None
+    baseline_results = eval_baseline_by_adv_data(env, td, baseline, True, save_result_fn)
+    baseline_mean = baseline_results["mean reward"]
+    baseline_var = baseline_results["var reward"]
+    baseline_rewards = baseline_results["rewards"]
+    if not isinstance(baseline_rewards, torch.Tensor):      # may list or tensor in heuristic algor
+        baseline_rewards = torch.tensor(baseline_rewards)
+    return baseline_mean, baseline_var, baseline_rewards
 
 def eval_baseline_by_adv_data(env, td, baseline, save_results=True, save_fname="baseline_result.npz", **kwargs):
     # heuristic is faster in cpu than GPU
