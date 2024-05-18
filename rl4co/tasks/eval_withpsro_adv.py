@@ -20,7 +20,7 @@ from rl4co.model_adversary import PPOContiAdvModel
 from rl4co.data.dataset import TensorDictDataset
 from torch.utils.data import DataLoader
 from rl4co.data.dataset import tensordict_collate_fn
-from rl4co.tasks.train_psro import update_payoff, nash_solver, play_game, eval, sample_strategy, eval_noadver
+from rl4co.tasks.train_psro import update_payoff, nash_solver, play_game, eval, sample_strategy, eval_noadver, play_game_heuristic
 from rl4co.tasks.train_psro import Adversary, Protagonist
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
@@ -94,7 +94,6 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         adversary_tmp.load_model_weights(cfg.evaluate_adv_dir+"/models_weights")
 
         data = np.load(cfg.adv_npz_pth)  # 加载
-        payoff_tmp = data['payoffs']  # 引用保存好的数组，他的格式默认是numpy.array
         adver_strategy = data['adver_strategy']
         if adversary_tmp.no_zeroth:
             print(f"before: adver strate is {adver_strategy}")
@@ -122,15 +121,14 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             protagonist_model = protagonist_model.load_from_checkpoint(rl_prog_pth)
             st = time.time()
             length = min(adversary_tmp.policy_number, len(adver_strategy))
-            rewards_whole_g = None
             rewards_rl = []
             for c in range(length):
-                with open(cfg.evaluate_adv_dir+"/"+str(c)+"_model_params.txt", "w") as file:
-                    for k in list(protagonist_model.policy.state_dict()):
-                        print("params name:",k)
-                        print(protagonist_model.policy.state_dict()[k])
-                        file.write(k+"\n")
-                        file.write(str(protagonist_model.policy.state_dict()[k].cpu().numpy()))
+                # with open(cfg.evaluate_adv_dir+"/"+str(c)+"_model_params.txt", "w") as file:
+                #     for k in list(protagonist_model.policy.state_dict()):
+                #         print("params name:",k)
+                #         print(protagonist_model.policy.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(protagonist_model.policy.state_dict()[k].cpu().numpy()))
 
                 adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(c)
                 # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
@@ -142,9 +140,9 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                 bl_rewards_var = [] # batch iter,
                 bl_rewards_all = None       # batch's size
 
-                test_data, stoch_dict, stoch_data = load_stoch_data(env, test_data, stoch_data_dir, stoch_data, c)
-                test_data = test_data.to(device)
-                test_dataset = TensorDictDataset(test_data)
+                stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+                test_data_ = test_data.to(device)
+                test_dataset = TensorDictDataset(test_data_)
                 test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
                 stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
@@ -209,36 +207,66 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
             print("eval baseline with psro-adversary")
             prog_baseline = cfg.baseline_heur
+
+            save_bl_res_pth = cfg.evaluate_adv_dir+ '/baseline_'+prog_baseline
+            if not os.path.exists(save_bl_res_pth):
+                os.mkdir(save_bl_res_pth)
+
+            
             # baseline计算时间长，仅计算概率不为0的
             support_adv_stra_idx = [i for i, x in enumerate(adver_strategy) if x>0]
             support_adv_stra = [x for i, x in enumerate(adver_strategy) if x>0]
             print(support_adv_stra)
+
+            stochdata_key_lst = stochdata_key_mapping[env.name]
+
             st = time.time()
-            rewards_whole_g = None
+            rewards_bl = []
             for adv_idx in support_adv_stra_idx:
-                adversary_model.policy, adversary_model.critic = adversary_tmp.get_policy_i(adv_idx)
-                # td_init = env.reset(test_data.clone()).to(device)
-                payoff = evaluate_baseline_withpsroadv(env, test_data_pth, prog_baseline, adversary_model, save_results=False)
-                payoff_underadv_baseline.append(payoff["mean reward"].item())
-                rewards = torch.tensor(payoff["rewards"]) if isinstance(payoff["rewards"], list) else payoff["rewards"]
-                if rewards_whole_g == None:
-                    rewards_whole_g = rewards
+
+                if adv_idx in stoch_data[stochdata_key_lst[0]]:     # no load again
+                    stoch_dict = {}
+                    for sk in stochdata_key_lst:
+                        stoch_dict[sk] = stoch_data[sk][adv_idx]
                 else:
-                    rewards_whole_g = torch.cat((rewards_whole_g, rewards), dim=0)
-            reward_eval = eval_oneprog_adv(payoff_underadv_baseline, support_adv_stra)
-            rewards_whole_g=rewards_whole_g.reshape(cfg.model_psro.test_data_size, len(support_adv_stra))
-            rewards_graphs = eval_oneprog_adv_allgraph(rewards_whole_g[:, None].cpu().numpy(), support_adv_stra)
-            var_eval = rewards_graphs.var()
+                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, adv_idx)
+                test_data_ = test_data.to(device)
+                test_dataset = TensorDictDataset(test_data_)
+                test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
+                stoch_dataset = TensorDictDataset(stoch_dict)
+                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                bl_rewards = [] # batch iter,
+                bl_rewards_var = [] # batch iter,
+                bl_rewards_all = None       # batch's size
+                for batch, stoch_batch in zip(test_dl, stoch_dl):
+                    
+
+                    batch_l_mean, batch_bl_var, batch_bl_allg = play_game_heuristic(env, batch.clone(), 
+                                                                                    prog_baseline, adv_idx, 
+                                                                                    stoch_batch, save_bl_res_pth)
+                    bl_rewards.append(batch_l_mean)
+                    bl_rewards_var.append(batch_bl_var)
+                    if bl_rewards_all == None:
+                        bl_rewards_all = batch_bl_allg
+                    else:
+                        bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
+                rewards_bl.append(bl_rewards_all.cpu().tolist())
+
             eval_time = time.time()-st 
-            print(f"reward mean is {reward_eval}, var is {var_eval}, eval time of baseline:{prog_baseline} is {eval_time} s")
+            bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_bl, support_adv_stra)
+            bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
+            print(f"baseline: reward mean is {bl_mean}, var is {bl_var}, eval time of baseline:{prog_baseline} is {eval_time} s")
             save_eval_pth = "eval_baseline_"+prog_baseline+"_withadv.npz"
 
             np.savez(cfg.evaluate_adv_dir+ '/'+save_eval_pth, 
                     baseline=prog_baseline,
-                    eval_reward=reward_eval,
-                    var_eval=var_eval,
+                    eval_reward=bl_mean,
+                    var_eval=bl_var,
                     eval_time=eval_time,
-                    eval_payoffs=payoff_underadv_baseline,       # key=value
+                    eval_payoffs=bl_rewards_psro,       # key=value
                     eval_data=test_data_pth,
                     eval_adver_strategy=adver_strategy,
                     support_adv=support_adv_stra,

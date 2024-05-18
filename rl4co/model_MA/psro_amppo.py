@@ -365,6 +365,13 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
             if self.fix_adversary:
                 td, out_adv = self.adversary.inference_step(batch, batch_idx, "val")        # inference_step中不会计算loss记录梯度
             else:
+                # with open("./adv_policy_after_params_sp_val.txt", "w") as file:
+                # #     # print(f"adv is {c}, params")
+                #     for k in list(self.adversary.policy.state_dict()):
+                #         # print("params name:",k)
+                #         # print(self.adversary.policy.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(self.adversary.policy.state_dict()[k].cpu().numpy()))
                 td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)        # inference_step中不会计算loss记录梯度
         elif phase == "val" or phase == "test":
             td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)        # inference_step中不会计算loss记录梯度
@@ -374,11 +381,20 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
 
         if phase == "train":
             if self.fix_protagonist:
-                with torch.no_grad():
-                    out_prog = self.protagonist.calculoss_step(td_temp, batch, "val")   # 传入”val“，内部不计算loss
+            # with torch.no_grad():
+                
+                self.protagonist.policy.val_decode_type = "sampling"
+                self.protagonist.policy.test_decode_type = "sampling"
+                out_prog = self.protagonist.calculoss_step(td_temp, batch, "val")   # 传入”val“，内部不计算loss
+                
             else:
+                # self.protagonist.policy.val_decode_type = "greedy"
+                # self.protagonist.policy.test_decode_type = "greedy"
                 out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
+                
         elif phase == "val" or phase == "test":
+            # self.protagonist.policy.val_decode_type = "greedy"
+            # self.protagonist.policy.test_decode_type = "greedy"
             out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
 
 
@@ -396,7 +412,34 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
                 # adv update
                 # if self.current_epoch < 90:     # fix adv after 90 epoch
                 #     if self.current_epoch % 5 == 0:
+                # with open("./policy_before_model_params.txt", "w") as file:
+                #     # print(f"adv is {c}, params")
+                #     for k in list(self.adversary.policy.state_dict()):
+                #         # print("params name:",k)
+                #         # print(self.adversary.policy.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(self.adversary.policy.state_dict()[k].cpu().numpy()))
+                # with open("./critic_before__model_params.txt", "w") as file:
+                #     for k in list(self.adversary.critic.state_dict()):
+                #         # print("params name:",k)
+                #         # print(self.adversary.critic.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(self.adversary.critic.state_dict()[k].cpu().numpy()))
                 out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
+
+                # with open("./policy_after_model_params.txt", "w") as file:
+                #     # print(f"adv is {c}, params")
+                #     for k in list(self.adversary.policy.state_dict()):
+                #         # print("params name:",k)
+                #         # print(self.adversary.policy.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(self.adversary.policy.state_dict()[k].cpu().numpy()))
+                # with open("./critic_after__model_params.txt", "w") as file:
+                #     for k in list(self.adversary.critic.state_dict()):
+                #         # print("params name:",k)
+                #         # print(self.adversary.critic.state_dict()[k])
+                #         file.write(k+"\n")
+                #         file.write(str(self.adversary.critic.state_dict()[k].cpu().numpy()))
         
         # for adv: adv_loss": "adv_surrogate_loss": "adv_value_loss": adv_entropy"
         for key, value in out_adv.items():
