@@ -194,14 +194,14 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 log.info(f" psro training epoch {e}")
                 bs_adversary, prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger, epoch=e)
                 protagonist.add_policy(bs_adversary)
-                # utility_1_br = prog_bs_reward
-                # prog_br_lst.append(prog_bs_reward)
+                utility_1_br = prog_bs_reward
+                prog_br_lst.append(prog_bs_reward)
                 protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e+1, bs_adversary)
 
                 bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
                 adversary.add_policy(bs_protagonist, bs_protagonist_critic)
-                # utility_2_br = -adver_bs_reward
-                # adver_br_lst.append(adver_bs_reward)
+                utility_2_br = -adver_bs_reward
+                adver_br_lst.append(adver_bs_reward)
                 adversary.save_a_model_weights(logger[0].save_dir+"/models_weights", e+1, bs_protagonist, bs_protagonist_critic)
 
                 # 判断是否达到平衡
@@ -236,17 +236,18 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 print(f"rewards_baseline: {rewards_baseline}")
 
                 # 
-                prog_bs_stra = np.zeros(len(protagonist.strategy)+1)
-                prog_bs_stra[-1] = 1.
-                utility_1_br = get_bs_utility(payoff_prot, prog_bs_stra, adversary.strategy, True)
-                prog_br_lst.append(utility_1_br)
+                # prog_bs_stra = np.zeros(len(protagonist.strategy)+1)
+                # prog_bs_stra[-1] = 1.
+                # utility_1_br = get_bs_utility(payoff_prot, prog_bs_stra, adversary.strategy, True)
+                # prog_br_lst.append(utility_1_br)
 
-                adv_bs_stra = np.zeros(len(adversary.strategy)+1)
-                adv_bs_stra[-1] = 1.
-                utility_2_br = get_bs_utility(payoff_prot, protagonist.strategy, adv_bs_stra, False)
-                adver_br_lst.append(utility_2_br)
+                # adv_bs_stra = np.zeros(len(adversary.strategy)+1)
+                # adv_bs_stra[-1] = 1.
+                # utility_2_br = get_bs_utility(payoff_prot, protagonist.strategy, adv_bs_stra, False)
+                # adver_br_lst.append(utility_2_br)
                 # compute nashconv
-                nashconv = max(utility_1_br - utility_1, 0) + max(utility_2_br - utility_2, 0)
+                # nashconv = max(utility_1_br - utility_1, 0) + max(utility_2_br - utility_2, 0)
+                nashconv = abs(utility_1_br + utility_2_br)
                 nashconv_lst.append(nashconv)
 
                 ## 根据payoff, 求解现在的nash eq,得到player’s strategies
@@ -387,7 +388,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     bl_rewards_var = [] # batch iter,
                     bl_rewards_all = None       # batch's size
 
-                    test_data, stoch_dict, stoch_data = load_stoch_data(env, test_data, stoch_data_dir, stoch_data, c)
+                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
                     test_data = test_data.to(device)
                     test_dataset = TensorDictDataset(test_data)
                     test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
