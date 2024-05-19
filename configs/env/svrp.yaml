@@ -2,8 +2,12 @@ _target_: rl4co.envs.SVRPEnv
 name: svrp
 
 num_loc: 20
-
+generate_method: "modelize"   # ["uniform", "modelize", "no_stoch"]
 stoch_idx: ${paths.stoch_idx}   # for stoch model params
 data_dir: ${paths.root_dir}/data${paths.stoch_idx}/svrp
-val_file: svrp_modelize${env.num_loc}_val_seed4321_size10000.npz
-test_file: svrp_modelize${env.num_loc}_test_seed1234_size100.npz
+train_file: svrp_${env.generate_method}${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+dataset_flag: "test"
+val_file: svrp_${env.generate_method}${env.num_loc}_test_seed1234_size${model.test_data_size}.npz
+#svrp_${env.generate_method}${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+test_file: svrp_${env.generate_method}${env.num_loc}_test_seed1234_size${model.test_data_size}.npz
+# svrp_modelize${env.num_loc}_test_seed1234_size100.npz
