@@ -105,7 +105,7 @@ class REINFORCE(RL4COLitModule):
 
         # REINFORCE baseline
         bl_val, bl_loss = (
-            self.baseline.eval(td, reward, self.env) if extra is None else (extra, 0)
+            self.baseline.eval(td, reward, self.env ) if extra is None else (extra, 0)
         )
 
         # Main loss function

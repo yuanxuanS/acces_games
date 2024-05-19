@@ -108,7 +108,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         if cfg.get("mode") == "evaluate":
             ckpt_path = cfg.get("ckpt_path")
             evaluate_model = model.load_from_checkpoint(ckpt_path)
-            save_fname = cfg.get("evaluate_loc") + "/evalu_"+method+".npz"
+            save_fname = cfg.get("evaluate_loc") + "/evalu_"+method+cfg.env.dataset_flag+".npz"
         elif cfg.get("mode") == "train":
             ckpt_path = trainer.checkpoint_callback.best_model_path
             evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)

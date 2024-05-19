@@ -140,18 +140,32 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                 bl_rewards_var = [] # batch iter,
                 bl_rewards_all = None       # batch's size
 
-                stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+               
+
                 test_data_ = test_data.to(device)
                 test_dataset = TensorDictDataset(test_data_)
                 test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
-                stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
-                stoch_dataset = TensorDictDataset(stoch_dict)
-                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                if not cfg.eval_no_saved_data:
+                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+
+                    stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                    stoch_dataset = TensorDictDataset(stoch_dict)
+                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                else:
+                    stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+                    if not os.path.exists(stoch_save_dir):
+                        os.mkdir(stoch_save_dir)
+                    stoch_dl = test_dl
 
                 for batch, stoch_batch in zip(test_dl, stoch_dl):
-                    rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
-                                            protagonist_model, adversary_model, False, "", False,)
+                    if not cfg.eval_no_saved_data:
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                                                protagonist_model, adversary_model, False, "", False,)
+                    else:
+                        stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                protagonist_model, adversary_model, True, stoch_data_save_pth, False,)
                     batch_rl_mean, batch_rl_allg = rl_res
                     batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -190,7 +204,7 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             eval_time = time.time() - st
             print(f"reward mean is {rl_mean}, var is {rl_var}, eval time of rl is {eval_time} s")
 
-            save_eval_pth = "eval_rl_withadv.npz"
+            save_eval_pth = "eval_rl_"+cfg.env.dataset_flag+"_withadv.npz"
 
             np.savez(cfg.evaluate_adv_dir+ '/'+save_eval_pth, 
                         rl_pth=rl_prog_pth,
@@ -223,20 +237,37 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             st = time.time()
             rewards_bl = []
             for adv_idx in support_adv_stra_idx:
+                
+                test_data_ = test_data.to(device)
+                test_dataset = TensorDictDataset(test_data_)
+                test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
                 if adv_idx in stoch_data[stochdata_key_lst[0]]:     # no load again
                     stoch_dict = {}
                     for sk in stochdata_key_lst:
                         stoch_dict[sk] = stoch_data[sk][adv_idx]
                 else:
-                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, adv_idx)
-                test_data_ = test_data.to(device)
-                test_dataset = TensorDictDataset(test_data_)
-                test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                    stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+                    if (not os.path.exists(stoch_save_dir)) and (not cfg.eval_no_saved_data):
+                        os.mkdir(stoch_save_dir)
+                        stoch_dl = test_dl
+                    else:
+                        if cfg.eval_no_saved_data:      # 有”其他数据文件“还要用新的数据
+                            stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata2/"
+                            os.mkdir(stoch_save_dir)
+                            stoch_dl = test_dl
+                            
+                        else:   # 有”其他数据文件“，就用这个
+                            stoch_dict, stoch_data = load_stoch_data(env, stoch_save_dir, stoch_data, adv_idx)
+                            stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                            stoch_dataset = TensorDictDataset(stoch_dict)
+                            stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                        
 
-                stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
-                stoch_dataset = TensorDictDataset(stoch_dict)
-                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                        
+                
+
+                
 
                 bl_rewards = [] # batch iter,
                 bl_rewards_var = [] # batch iter,
@@ -259,7 +290,7 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_bl, support_adv_stra)
             bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
             print(f"baseline: reward mean is {bl_mean}, var is {bl_var}, eval time of baseline:{prog_baseline} is {eval_time} s")
-            save_eval_pth = "eval_baseline_"+prog_baseline+"_withadv.npz"
+            save_eval_pth = "eval_baseline_"+prog_baseline+"_"+cfg.env.dataset_flag+"_withadv.npz"
 
             np.savez(cfg.evaluate_adv_dir+ '/'+save_eval_pth, 
                     baseline=prog_baseline,

@@ -20,6 +20,7 @@ from rl4co.model_adversary import PPOContiAdvModel
 from rl4co.data.dataset import TensorDictDataset
 from torch.utils.data import DataLoader
 from rl4co.data.dataset import tensordict_collate_fn
+from rl4co.utils.lightning import get_lightning_device
 
 
 from rl4co import utils
@@ -87,7 +88,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.get("train"):
 
-        try:
+        # try:
             val_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
             val_data = env.load_data(val_data_pth)
             val_dataset = TensorDictDataset(val_data)
@@ -122,11 +123,27 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             # protagonist.policies[0], prog_bs_reward = protagonist.get_best_response(adversary, cfg, callbacks, logger)
             if cfg.load_prog_from_path:
                 tmp_model: LightningModule = hydra.utils.instantiate(cfg.model, env)
-                tmp_model = tmp_model.load_from_checkpoint(cfg.load_prog_from_path)
+                tmp_model = tmp_model.load_from_checkpoint(cfg.load_prog_from_path)     # 此时baseline还是with_adv=False
+                tmp_model.baseline.with_adv = True
+                tmp_model.baseline.baseline.with_adv = True
+                # tmp_model.post_setup_hook()
+                tmp_model.baseline.setup(       # prog_mdel初始化一次，load baseline一次， 这里(rollout_adv)一次
+                    tmp_model.policy,
+                    tmp_model.env,
+                    batch_size=tmp_model.val_batch_size,
+                    device=get_lightning_device(tmp_model),
+                    dataset_size=tmp_model.data_cfg["val_data_size"],
+                    adv=adversary_model.to(device)
+                )
                 protagonist.policies[0] = tmp_model.policy
             protagonist_model.policy = protagonist.get_policy_i(0)
 
-
+            if cfg.load_adv_from_path:
+                tmp_model: LightningModule = hydra.utils.instantiate(cfg.model_adversary, env)
+                tmp_model = tmp_model.load_from_checkpoint(cfg.load_adv_from_path)
+                adversary.policies[0], adversary.correspond_critic[0] = tmp_model.policy, tmp_model.critic
+            adversary_model.policy, adversary_model.critic = adversary.get_policy_i(0)
+            # log.info(f"Instantiating adversary model <{cfg.model_adversary._target_}>")   
             payoff_prot = []
             row_payoff = []
             protagonist_model.policy = protagonist.get_policy_i(0)
@@ -198,7 +215,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 prog_br_lst.append(prog_bs_reward)
                 protagonist.save_a_model_weights(logger[0].save_dir+"/models_weights/", e+1, bs_adversary)
 
-                bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger)
+                bs_protagonist, bs_protagonist_critic, adver_bs_reward = adversary.get_best_response(protagonist, cfg, callbacks, logger, epoch=e)
                 adversary.add_policy(bs_protagonist, bs_protagonist_critic)
                 utility_2_br = -adver_bs_reward
                 adver_br_lst.append(adver_bs_reward)
@@ -207,7 +224,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 # 判断是否达到平衡
                 if abs(prog_bs_reward - adver_bs_reward) < epsilon:
                     print(f"get equalibium in {e} epoch !!! prog reward:{prog_bs_reward}, adver reward:{adver_bs_reward}")
-                    # break
+                    break
                 else:
                     print(f"curr prog reward: {prog_bs_reward}, curr adver reward:{adver_bs_reward} in epoch {e}")
 
@@ -232,7 +249,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 print(f" after update payoff in {e}: num of rl and bl eval data {len(rewards_rl)}  {len(rewards_baseline)}")
                 
                 print(f"payoff_prot: {payoff_prot}")
-                print(f"rewards_rl: {rewards_rl}")
+                # print(f"rewards_rl: {rewards_rl}")
                 print(f"rewards_baseline: {rewards_baseline}")
 
                 # 
@@ -301,10 +318,10 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                         bl_mean=bl_mean,
                         bl_var=bl_var)
         
-        except Exception as e:
-            print(f"error :{e}")
+        # except Exception as e:
+            # print(f"error :{e}")
 
-        finally:        # 
+        # finally:        # 
             protagonist.save_model_weights(logger[0].save_dir+"/models_weights_final/")   # logger是list
             adversary.save_model_weights(logger[0].save_dir+"/models_weights_final")
             
@@ -356,7 +373,6 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         # print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
-        payoff_eval = []
         if cfg.get("eval_withadv"):
             # 有adver的eval
             print("eval with adversary")
@@ -388,18 +404,40 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     bl_rewards_var = [] # batch iter,
                     bl_rewards_all = None       # batch's size
 
-                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
                     test_data = test_data.to(device)
                     test_dataset = TensorDictDataset(test_data)
                     test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
-                    stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_batch_size, device=device)
-                    stoch_dataset = TensorDictDataset(stoch_dict)
-                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                    loaded = False
+                    if not cfg.eval_no_saved_data:
+                        loaded = True
+                        stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+
+                        stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                        stoch_dataset = TensorDictDataset(stoch_dict)
+                        stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                    else:
+                        stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+                        if os.path.exists(stoch_save_dir):
+                            loaded = True
+                            stoch_dict, stoch_data = load_stoch_data(env, stoch_save_dir, stoch_data, c)
+
+                            stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                            stoch_dataset = TensorDictDataset(stoch_dict)
+                            stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                        else:
+                            loaded = False
+                            os.mkdir(stoch_save_dir)
+                            stoch_dl = test_dl
 
                     for batch, stoch_batch in zip(test_dl, stoch_dl):
-                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
-                                            protagonist_model, adversary_model, False, "", False,)
+                        if loaded:
+                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                                                protagonist_model, adversary_model, False, "", False,)
+                        else:
+                            stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
+                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                    protagonist_model, adversary_model, True, stoch_data_save_pth, False,)
                         batch_rl_mean, batch_rl_allg = rl_res
                         batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -430,7 +468,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             reward_eval, eval_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
 
             time_ = time.time()-st
-            save_eval_pth = "eval_with"+another+"adv.npz"
+            save_eval_pth = "eval_with"+another+"_"+cfg.env.dataset_flag+"adv.npz"
         else:
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
             print("eval without adversary")
@@ -463,7 +501,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             reward_eval = rewards_graphs.mean()
 
             time_ = time.time()-st
-            save_eval_pth = "eval_withoutadv.npz"
+            save_eval_pth = "eval_withoutadv"+"_"+cfg.env.dataset_flag+".npz"
         print(f"eval reward: {reward_eval}, var is {eval_var}, time is {time_}")
         adv_pth = cfg.evaluate_adv_dir if cfg.another_adv else None
         np.savez(cfg.ckpt_psro_path+ '/'+save_eval_pth, 
