@@ -146,7 +146,7 @@ class RL4COLitModule(LightningModule):
             generate_default_datasets(data_dir=self.data_cfg["data_dir"], data_cfg=self.data_cfg)
 
         self.train_dataset = self.wrap_dataset(
-            self.env.dataset(self.data_cfg["train_data_size"], phase="train")
+            self.env.dataset(self.data_cfg["train_data_size"], phase="train", filename=self.env.train_file)
         )
         self.val_dataset = self.env.dataset(self.data_cfg["val_data_size"], phase="val")
         self.test_dataset = self.env.dataset(

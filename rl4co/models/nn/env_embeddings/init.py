@@ -67,7 +67,7 @@ class CSPInitEmbedding(nn.Module):
 
     def __init__(self, embedding_dim, linear_bias=True):
         super(CSPInitEmbedding, self).__init__()
-        node_dim = 4  # x, y, min_cover, max_cover
+        node_dim = 3  # x, y,max_cover
         weather_dim = 3     # 
         self.init_embed = nn.Linear(node_dim+weather_dim, embedding_dim, linear_bias)
 
@@ -75,7 +75,7 @@ class CSPInitEmbedding(nn.Module):
         size = td["locs"].shape[-2]
         weather = td["weather"][:, None, :].repeat(1, size, 1)
         feature = torch.concat([td["locs"],
-                                 td["min_cover"][..., None],
+                                #  td["min_cover"][..., None],
                                  td["max_cover"][..., None],
                                  weather], dim=-1)
         out = self.init_embed(feature)

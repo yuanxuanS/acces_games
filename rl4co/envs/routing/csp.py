@@ -98,12 +98,13 @@ class CSPEnv(RL4COEnvBase):
         covered_node = curr_dist < self.min_cover
         # in media distance, prob p to cover: p=softmax(dij)
         max_cover = td["stochastic_maxcover"][range(batch_size), current_node][..., None].repeat(1, self.num_loc)
-        media_cover = (curr_dist >= self.min_cover) & (curr_dist < max_cover)
+        media_cover = (curr_dist > self.min_cover) & (curr_dist < max_cover)
         # tmp = torch.rand((batch_size, self.num_loc)).to(td.device)
         # masked = curr_dist * media_node
         # masked = torch.where(media_node, masked, -torch.ones_like(masked) * 1e5)
         # prob = torch.softmax((masked), -1)
         # media_cover = tmp <= prob
+        covered_node[range(batch_size), current_node] = True
         covered_node[media_cover] = True
 
         td["covered_node"][covered_node] = True       #[batch, num_loc]
@@ -376,7 +377,7 @@ class CSPEnv(RL4COEnvBase):
         
         tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
-        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.0)
         
         # del tot_w, noise
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
@@ -403,6 +404,7 @@ class CSPEnv(RL4COEnvBase):
                                                 adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
         # 不能超过max_cover范围
         stochastic_maxcover = torch.clamp(stochastic_maxcover, min=self.min_cover, max=self.max_cover)
+        # stochastic_maxcover = (stochastic_maxcover - stochastic_maxcover.min())* self.max_cover / (stochastic_maxcover.max() - stochastic_maxcover.min())
         td.set("stochastic_maxcover", stochastic_maxcover)
         return td
     
