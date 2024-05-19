@@ -8,13 +8,13 @@ defaults:
   - override /logger: wandb.yaml  # csv.yaml  #
   
 # psro params
-iters: 10000
+iters: 50
 epsilon: 0.01
 prog_epoch1: 10
 prog_epoch2: 10
 prog_epoch3: 10
-adver_epoch1: 10
-adver_epoch2: 10
+adver_epoch1: 20
+adver_epoch2: 20
 adver_epoch3: 10
 
 eval_baseline: False
@@ -98,7 +98,7 @@ model_adversary:
   ppo_epochs: 2
   mini_batch_size: 512
   vf_lambda: 0.5
-  entropy_lambda: 0.05
+  entropy_lambda: 0.01
   normalize_adv: false
   max_grad_norm: 0.5
   optimizer_kwargs:

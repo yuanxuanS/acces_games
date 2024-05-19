@@ -158,8 +158,9 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             # payoff = rewards.mean().item()
             # row_payoff.append(payoff)
             # payoff_prot.append(row_payoff)
+            stoch_data = {}
             for sk in stochdata_key_mapping[env.name]:
-                stoch_data = {sk: {}}     # {"stochastic_demand": {0: tensordict (data_size, ), 1:}}
+                stoch_data[sk] = {}     # {"stochastic_demand": {0: tensordict (data_size, ), 1:}}
             rewards_rl = []
             rewards_baseline = []
             payoff_prot, rewards_rl, rewards_baseline, stoch_data = update_payoff(cfg, env, val_data_pth, 
@@ -224,7 +225,9 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 # 判断是否达到平衡
                 if abs(prog_bs_reward - adver_bs_reward) < epsilon:
                     print(f"get equalibium in {e} epoch !!! prog reward:{prog_bs_reward}, adver reward:{adver_bs_reward}")
-                    break
+
+                    if e > 15:
+                        break
                 else:
                     print(f"curr prog reward: {prog_bs_reward}, curr adver reward:{adver_bs_reward} in epoch {e}")
 
@@ -398,8 +401,9 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 another = "_this_"
             
             stoch_data_dir = cfg.evaluate_prog_dir+"/adv_stoch_data/"
+            stoch_data = {}
             for sk in stochdata_key_mapping[env.name]:
-                stoch_data = {sk: {}}
+                stoch_data[sk]={}
             st = time.time()
             rewards_rl = []
             for r in range(len(prog_strategy)):     # 当error停止，出现policy个数-strategy个数 = 1

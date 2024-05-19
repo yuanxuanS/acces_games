@@ -32,7 +32,7 @@ baselines_mapping = {
 stochdata_key_mapping = {
     "svrp": ["real_demand"],        # reset_stochastic_var()里改变的
     "csp": ["stochastic_maxcover"],
-    "opsa": ["attack_prob", ]   # attack_prob 不变； 随机变量tmp=real-prob, 决定stoch_cost (cost已知)
+    "opsa": ["real_prob", "stochastic_cost"]   # attack_prob 不变； 随机变量tmp=real-prob, 决定stoch_cost (cost已知)
 }
 
     
@@ -329,7 +329,7 @@ def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None,
         else:       # load saved stoch data and reset td
             for sk in stochdata_key_lst:
                 td_init.set(sk, stoch_td[sk])
-                td = td_init
+            td = td_init
             # print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]}")
     else:
         td = td_init.clone()

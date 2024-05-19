@@ -110,8 +110,9 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         test_data = env.load_data(test_data_pth)
         stoch_data_dir = cfg.evaluate_adv_dir+"/adv_stoch_data/"
+        stoch_data = {}
         for sk in stochdata_key_mapping[env.name]:
-            stoch_data = {sk: {}}
+            stoch_data[sk] = {}
 
         if cfg.get("eval_rl_prog"):
             # 
