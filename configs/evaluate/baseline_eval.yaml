@@ -17,8 +17,9 @@ evaluate_baseline: true
 # in evaluate mode, must give these params!!!!!
 # evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33"
 # ckpt_path: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33/rl4co/mql00v5r/checkpoints/epoch=2-step=3.ckpt"
-evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/"
-ckpt_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt"
+evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-14_15-45-07/"
+ckpt_path: "/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-14_15-45-07/rl4co/1n85aevy/checkpoints/epoch=99-step=125000.ckpt"
+#"/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-08_21-14-27/rl4co/sgtdk5tf/checkpoints/epoch=99-step=125000.ckpt"
 evaluate_loc: "${evaluate_savedir}"
-baseline: "tabu"   # ["cw", "tabu"] for svrp
+baseline: "LS2"   # ["cw", "tabu"] for svrp; ["LS1", "LS2"] or csp
 

@@ -6,10 +6,11 @@ import time
 from tensordict.tensordict import TensorDict
 
 STOCH_PARAMS = {
-    0: [0.6, 0.2, 0.2],
-    1: [0.8, 0.2, 0.0],
-    2: [0.8, 0.,  0.2],
-    3: [0.4, 0.3, 0.3]
+    0: [0.6, 0.4, 0],
+    1: [0.6, 0.2, 0.2],
+    2: [0.8, 0.2, 0.0],
+    3: [0.8, 0.,  0.2],
+    4: [0.4, 0.3, 0.3]
 }
 STOCH_IDX = 0
 
@@ -149,8 +150,8 @@ def concat_npz_data(dir):
     # print(data)
     np.savez(save_pth, **data)
 
-def generate_and_save_stoch_data(batch_size, num_loc):
-    data = np.load("/home/panpan/rl4co/data"+str(STOCH_IDX)+"/opsa/opsa20_val.npz")
+def generate_and_save_stoch_data(batch_size, num_loc, phase):
+    data = np.load("/home/panpan/rl4co/data"+str(STOCH_IDX)+"/opsa/opsa"+str(num_loc)+"_"+phase+".npz")
     locs = data["locs"]
 
     attack_prob = np.random.uniform(0, 1, size=(batch_size, num_loc)).astype(np.float32)
@@ -167,7 +168,7 @@ def generate_and_save_stoch_data(batch_size, num_loc):
     data = {"attack_prob": attack_prob, 
                 "real_prob": real_prob,
                 "weather": weather}
-    val_pth = "/home/panpan/rl4co/data"+str(STOCH_IDX)+"/opsa/opsa20_val_part_data.npz"
+    val_pth = "/home/panpan/rl4co/data"+str(STOCH_IDX)+"/opsa/opsa"+str(num_loc)+"_"+phase+"_part_data.npz"
     np.savez(val_pth, **data)
 
 
@@ -185,7 +186,7 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     noise = np.sqrt(var_noise)*np.random.randn(n_problems,n_nodes, shape)      #=np.rand.randn, normal dis(0, 1)
     noise = np.clip(noise, a_min=-var_noise, a_max=var_noise)
     
-    var_w = np.sqrt(T*B)
+    var_w = T*B
     # sum_alpha = var_w[:, :, np.newaxis, :]*4.5      #? 4.5
     # alphas = np.random.random((n_problems, n_nodes, 9, shape))      # =np.random.random, uniform dis(0, 1)
     # alphas /= alphas.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
@@ -223,22 +224,24 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
             ).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
     tot_w = np.clip(tot_w, a_min=-var_w, a_max=var_w)
     out = inp + tot_w + noise
-    out = np.clip(out, a_min=0.01, a_max=1e5)       # a_min a_max必须都是标量
+    out = np.clip(out, a_min=0.0, a_max=1e5)       # a_min a_max必须都是标量
     
     del sum_alpha, alphas_loc, signs, tot_w
     del T, noise, var_w
     # gc.collect()
         
     return out
-
-generate_and_save_stoch_data(10000, 20)
+# 20: test和val都是10000
+# 50: test 2000, val 10000
+generate_and_save_stoch_data(10000, 50, "val")
 # process_swtwtsp_data(0) # 先将所有数据每80000条分别存下来
 # generate_opswtw_data(1280000)
 # concat_npz_data(0)
 
-# td = load_npz_to_tensordict("/home/panpan/rl4co/data0/opsa/opsa20_test.npz")
+# td = load_npz_to_tensordict("/home/panpan/rl4co/data0/opsa/opsa20_test_part_data.npz")
 # print(len(dict(td)["locs"]))
-# print(dict(td)["locs"][0,:10])
+# print(dict(td)["real_prob"][0,:10])
+# print(dict(td)["attack_prob"][0,:10])
 # print(td["maxtime"].max(), td["tw_high"].max())
 # print(td.batch_size, td.keys())
 # generate_stochastoc_factor()

@@ -163,7 +163,7 @@ class PPO(RL4COLitModule):
                     )
 
                     # Compute the ratio of probabilities of new and old actions
-                    ratio = torch.exp(ll.sum(dim=-1) - sub_td["log_prob"]).view(
+                    ratio = torch.exp(ll.sum(dim=-1) - sub_td["log_prob"].detach()).view(
                         -1, 1
                     )  # [batch, 1]
 

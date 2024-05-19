@@ -9,7 +9,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from rl4co.heuristic import CW_svrp, TabuSearch_svrp
 
 # RL4CO env based on TorchRL
-env = SVRPEnv(num_loc=20) 
+env = SVRPEnv(num_loc=20, stoch_idx=0) 
 
 # print(env.dataset().data)       # td: data variables in env
 # print(len(env.dataset()))   # init with 0 data

@@ -224,9 +224,9 @@ class Protagonist:
         
         # max_epoch = 1
         if epoch == 0:
-            max_epoch = 15  #20 # 
+            max_epoch = cfg.prog_epoch1  #20 # 
         elif epoch > 0 and epoch < 5:
-            max_epoch = 10  #20  # 
+            max_epoch = cfg.prog_epoch2  #20  # 
         else: 
             max_epoch = 10
         
@@ -430,7 +430,7 @@ class Adversary:
                                                             prog_strategy=protagonist.strategy,
                                                             adver_strategy=self.strategy)
 
-        max_epoch = 3
+        max_epoch = cfg.adver_epoch
         if cfg.get("train"):
             log.info(f"Instantiating trainer in adver bs ...")
             trainer: RL4COTrainer = hydra.utils.instantiate(
@@ -542,8 +542,12 @@ def run_psro(cfg: DictConfig):
             print("init payoff:", payoff_prot)
             print(protagonist.policy_number)
             iter_reward = []
-            iterations = 40
-            epsilon = 0.01      # prog, adver的bs差距阈值，小于判断为 均衡
+            iterations = cfg.iters
+            epsilon = cfg.epsilon      # prog, adver的bs差距阈值，小于判断为 均衡
+
+            with np.errstate(invalid="raise"):
+                a = np.array(1) / 0
+                
             for e in range(iterations):
 
                 log.info(f" psro training epoch {e}")
@@ -655,8 +659,9 @@ def run_psro(cfg: DictConfig):
                     td_init = env.reset(test_data.clone()).to(device)
                     payoff = play_game(env, td_init, protagonist_model, adversary_model)
                     payoff_diff_adv.append(payoff)
-                
+                    print(f"r,c :{r},{c}")
                 payoff_eval.append(payoff_diff_adv)
+                
             reward_eval = eval(payoff_eval, prog_strategy, adver_strategy)
             save_eval_pth = "eval_withadv.npz"
         else:
