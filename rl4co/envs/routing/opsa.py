@@ -56,7 +56,7 @@ class OPSAEnv(RL4COEnvBase):
         """
         
         if phase == "train":
-            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_train.npz"
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "val":
             filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "test":
@@ -105,7 +105,7 @@ class OPSAEnv(RL4COEnvBase):
         cost = td_load["prize"][:batch_size, ...]
         td_load.set("cost", cost)
         
-        if "val" in fpath:  # load other data for valand test
+        if ("val" in fpath):  # load other data for valand test
             part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
@@ -138,10 +138,11 @@ class OPSAEnv(RL4COEnvBase):
                                      weather[:, None, :].
                                      repeat(1, self.num_loc, 1).to("cpu"),
                                      None).squeeze(-1).float().to(self.device)
-            real_prob = torch.clamp(real_prob, max=1.)
+            real_prob = torch.clamp(real_prob, min=0., max=1.)
         
-        
+
         real_prob = real_prob * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
+        real_prob[:, 0]=0
         attacked = real_prob > attack_prob
         stoch_cost = cost.clone() * attacked
         
@@ -217,7 +218,7 @@ class OPSAEnv(RL4COEnvBase):
         noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
         noise = torch.clamp(noise, min=-var_noise, max=var_noise)
 
-        var_w = torch.sqrt(T*B)
+        var_w = T*B
         # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         sum_alpha = var_w[:, :, None, :]*9      #? 4.5
         
@@ -239,7 +240,7 @@ class OPSAEnv(RL4COEnvBase):
         
         tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
-        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.0)
         
         # del tot_w, noise
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
@@ -353,12 +354,14 @@ class OPSAEnv(RL4COEnvBase):
         done[back_to_depot] = True
         # add cost to reward(maximize) if defend 
         curr_cost = td["curr_cost"]
+        # multiply realprob
         real_cost = td["stochastic_cost"][range(batch_size), current_node]
+        real_prob_curr = td["real_prob"][range(batch_size), current_node]
         # still penalty attack's cost if exceeds the high thres
         curr_cost = td["curr_cost"]
         curr_penalty = tour_time >= curr_tw_high
         real_cost[curr_penalty] = 0
-        curr_cost += real_cost
+        curr_cost += real_cost*real_prob_curr
 
 
 
@@ -434,7 +437,9 @@ class OPSAEnv(RL4COEnvBase):
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
                                                 adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
-
+        real_prob = torch.clamp(real_prob, min=0., max=1.)
+        real_prob[:, 0] = 0                         
+        td.set("real_prob", real_prob)
         # reset cost by new attack prob
         attack_prob = td["attack_prob"]
         attacked = real_prob > attack_prob

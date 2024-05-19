@@ -46,23 +46,24 @@ class SVRPEnv(CVRPEnv):
     env_fixed = True
     
     stoch_params = {
-                        0: [0.6, 0.2, 0.2],
-                        1: [0.8, 0.2, 0.0],
-                        2: [0.8, 0.,  0.2],
-                        3: [0.4, 0.3, 0.3]
+                        0: [0.6, 0.4, 0],
+                        1: [0.6, 0.2, 0.2],
+                        2: [0.8, 0.2, 0.0],
+                        3: [0.8, 0.,  0.2],
+                        4: [0.4, 0.3, 0.3]
                     }
     def __init__(self, generate_method = "modelize", env_fix=False, **kwargs):
         super().__init__(**kwargs)
         
         self.generate_method = generate_method
-        assert self.generate_method in ["uniform", "modelize"], "way of generate stochastic data is invalid"
+        assert self.generate_method in ["uniform", "modelize", "no_stoch"], "way of generate stochastic data is invalid"
 
         if env_fix:
             SVRPEnv.env_fixed = True
             SVRPEnv.name = "svrp_fix"
         SVRPEnv.stoch_idx = kwargs.get("stoch_idx")
         
-        
+
 
     def get_fix_data(self, graph_pool):
         if SVRPEnv.env_fixed:
@@ -231,6 +232,8 @@ class SVRPEnv(CVRPEnv):
                 .int()
                 + 1
             ).float().to(self.device)
+        elif self.generate_method == "no_stoch":
+            stochastic_demand = demand.clone()
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
@@ -349,7 +352,8 @@ class SVRPEnv(CVRPEnv):
         noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
         noise = torch.clamp(noise, min=-var_noise, max=var_noise)
 
-        var_w = torch.sqrt(T*B)
+        # var_w = torch.sqrt(T*B)
+        var_w = T*B
         # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
         sum_alpha = var_w[:, :, None, :]*9      #? 4.5
         
@@ -359,7 +363,7 @@ class SVRPEnv(CVRPEnv):
             # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
         # alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
         alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
-        alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
+        # alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
         signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
         # signs = torch.where(signs > 0.5)
         alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
@@ -370,7 +374,7 @@ class SVRPEnv(CVRPEnv):
         
         tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
         tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
-        out = torch.clamp(inp_ + tot_w + noise, min=0.01)
+        out = torch.clamp(inp_ + tot_w + noise, min=0.0)
         
         # del tot_w, noise
         del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
@@ -396,6 +400,8 @@ class SVRPEnv(CVRPEnv):
                 .int()
                 + 1
             ).float().to(self.device)
+        elif self.generate_method == "no_stoch":
+            stochastic_demand = td["demand"].clone()
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
