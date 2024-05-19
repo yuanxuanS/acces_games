@@ -296,6 +296,17 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     bl_rewards_psro = None
                     bl_mean, bl_var = None, None
 
+                # 每轮更新一次rl和bl的mean，var： reward_rl [iter, datasize,]
+                rl_rewards_psro = eval_oneprog_adv_allgraph(rewards_rl, adversary_strategy)
+                rl_mean, rl_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
+
+                if cfg.eval_baseline:
+                    bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_baseline, adversary_strategy)
+                    bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
+                else:
+                    bl_rewards_psro = None
+                    bl_mean, bl_var = None, None
+
                 np.savez(save_payoff_pth+ 'info.npz', 
                     payoffs=payoff_prot,       # key=value
                     iter_reward=iter_reward,

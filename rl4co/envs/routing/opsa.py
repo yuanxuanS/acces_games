@@ -58,9 +58,9 @@ class OPSAEnv(RL4COEnvBase):
         if phase == "train":
             filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "val":
-            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
+            filename = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "test":
-            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test.npz"
+            filename = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test.npz"
         f = filename
         log.info(f"Loading {phase} dataset from {f}")
         try:
@@ -112,7 +112,7 @@ class OPSAEnv(RL4COEnvBase):
             real_prob = td_load_part["real_prob"]
             weather = td_load_part["weather"]
         elif "test" in fpath:
-            part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
+            part_pth = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
             real_prob = td_load_part["real_prob"]
@@ -140,7 +140,6 @@ class OPSAEnv(RL4COEnvBase):
                                      None).squeeze(-1).float().to(self.device)
             real_prob = torch.clamp(real_prob, min=0., max=1.)
         
-
         real_prob = real_prob * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
         real_prob[:, 0]=0
         attacked = real_prob > attack_prob
@@ -156,7 +155,7 @@ class OPSAEnv(RL4COEnvBase):
     
     def generate_data(self, batch_size) -> TensorDict:
         # 加载预先保存好的opsa 训练数据
-        data_pth = "/home/panpan/rl4co/data/opsa/opsa"+str(self.num_loc)+"_train.npz"
+        data_pth = "/home/u2021141179/rl4co_cp/data/opsa/opsa"+str(self.num_loc)+"_train.npz"
 
         x_dict = self.load_data(data_pth, batch_size)
         whole_size = x_dict.batch_size[0]

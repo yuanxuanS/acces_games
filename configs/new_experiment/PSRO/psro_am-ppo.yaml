@@ -116,6 +116,6 @@ model_adversary:
 # trainer:
 #   # max_epochs:  50 #
 
-seed: 1234
+seed: 3
 
 evaluate_method: "greedy"   #["greedy", "sampling", "greedy_multistart", "augment_dihedral_8", "augment", "greedy_multistart_augment_dihedral_8", "greedy_multistart_augment"]
