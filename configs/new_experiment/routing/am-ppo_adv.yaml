@@ -1,0 +1,64 @@
+# @package _global_
+
+defaults:
+  - override /model_adversary: am-ppo.yaml
+  - override /env: opsa.yaml
+  - override /callbacks: default.yaml
+  - override /trainer: default.yaml
+  - override /logger: wandb.yaml
+
+env:
+  num_loc: 20
+
+logger:
+  wandb:
+    project: "rl4co"
+    tags: ["am-ppo", "${env.name}"]
+    group: ${env.name}${env.num_loc}
+    name: ppo-adv-${env.name}${env.num_loc}
+    offline: true
+prog_pth: /home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-20_01-52-52/rl4co/qy23fvab/checkpoints/epoch=49-step=1000.ckpt
+#logs/train/runs/svrp20/am-svrp20/2024-05-19_20-56-05/rl4co/6bib2wms/checkpoints/epoch=49-step=1000.ckpt
+
+model_adversary:
+  opponent_type: "rl"
+  batch_size: 512
+  val_batch_size: 512
+  test_batch_size: 100
+  train_data_size: 10_000
+  val_data_size: 10_000
+  test_data_size: 100
+  clip_range: 0.2
+  ppo_epochs: 2
+  mini_batch_size: 512
+  vf_lambda: 0.5
+  entropy_lambda: 0.0
+  normalize_adv: False
+  max_grad_norm: 0.5
+  optimizer_kwargs:
+    lr: 5e-5
+    weight_decay: 0
+  lr_scheduler:
+    "MultiStepLR"
+  lr_scheduler_kwargs:
+    milestones: [30, 45]
+    gamma: 0.1
+  data_dir: "data${paths.stoch_idx}/"
+
+model:
+  batch_size: ${model_adversary.batch_size}
+  val_batch_size: ${model_adversary.val_batch_size}
+  test_batch_size: ${model_adversary.test_batch_size}
+  train_data_size: ${model_adversary.train_data_size}
+  val_data_size: ${model_adversary.val_data_size}
+  test_data_size: ${model_adversary.test_data_size}
+
+trainer:
+  max_epochs: 50
+  gradient_clip_val: Null # not supported in manual optimization
+  precision: "32-true" # NOTE: this seems to be important during manual optimization
+
+seed: 1234
+
+metrics:
+  train: ["loss", "reward", "surrogate_loss", "value_loss", "entropy_bonus"]

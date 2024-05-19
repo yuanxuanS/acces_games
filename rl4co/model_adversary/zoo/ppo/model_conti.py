@@ -20,6 +20,7 @@ class PPOContiAdvModel(PPOContinuousAdversary):
         self,
         env: RL4COEnvBase,
         opponent: object or None,
+        opponent_type: str,
         policy: PPOContiAdvPolicy = None,
         critic: CriticNetwork = None,
         policy_kwargs: dict = {},
@@ -32,4 +33,4 @@ class PPOContiAdvModel(PPOContinuousAdversary):
         if critic is None:
             critic = CriticNetwork(env.name, **critic_kwargs)
 
-        super().__init__(env, opponent, policy, critic, **kwargs)
+        super().__init__(env, opponent, opponent_type, policy, critic, **kwargs)

@@ -1,10 +1,13 @@
-from typing import Any, Union
+from typing import IO, Any, Optional, Union, cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.utils.data import DataLoader
+from lightning.fabric.utilities.types import _MAP_LOCATION_TYPE, _PATH
+from lightning.pytorch.core.saving import _load_from_checkpoint
+from typing_extensions import Self
 
 from rl4co.data.dataset import TensorDictDataset, tensordict_collate_fn
 from rl4co.envs.common.base import RL4COEnvBase
@@ -63,14 +66,15 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         self,
         env: RL4COEnvBase,
         opponent: Union[object, str]=None,
+        opponent_type: str = "rl",      # “heuristic" , "no", "rl":when just train adver
         policy: nn.Module = None,
         critic: nn.Module = None,
         clip_range: float = 0.2,  # epsilon of PPO
         ppo_epochs: int = 2,  # inner epoch, K
-        mini_batch_size: Union[int, float] = 0.25,  # 0.25,
+        mini_batch_size: Union[int, float] = 0.5,  # 0.25,
         vf_lambda: float = 0.5,  # lambda of Value function fitting
-        entropy_lambda: float = 0.0,  # lambda of entropy bonus
-        normalize_adv: bool = False,  # whether to normalize advantage
+        entropy_lambda: float = 0.01,  # lambda of entropy bonus
+        normalize_adv: bool = True,  # whether to normalize advantage
         max_grad_norm: float = 0.5,  # max gradient norm
         metrics: dict = {
             "train": ["reward", "loss", "surrogate_loss", "value_loss", "entropy"],
@@ -84,8 +88,14 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         self.critic = critic
         
         # interact with opponent: get reward from it
+        self.opponent_type = opponent_type
         if isinstance(opponent, str):
-            opponent = get_adversary_opponent(opponent)
+            if self.opponent_type == "heuristic":
+                opponent = get_adversary_opponent(opponent)
+            elif self.opponent_type == "rl":
+                assert opponent != None, "RL opponent is not specified"
+            else:
+                raise ValueError(f"Unsupported opponent type: {self.opponent_type}")
         self.opponent = opponent
 
         if isinstance(mini_batch_size, float) and (
@@ -138,16 +148,25 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         if phase == "test" or phase == "val":
             self.policy.eval()
             self.critic.eval()
+            
         elif phase== "train": 
             self.policy.train()
             self.critic.train()
-        out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
+            # out = self.policy(td.clone(), phase=phase)       # a Network output param :alpha
+
+        with torch.no_grad():
+            out = self.policy(td.clone(), phase=phase)
         td = self.env.reset_stochastic_var(td, out["action_adv"][..., None])    # env transition: get new real demand
         if self.opponent:       # get reward from current run of opponent
             assert td.get("reward", default=None) == None   # if get reward currently from oppo, must no reward in td now  
-            oppo_reward = self.opponent(td.clone()).forward()
-            td["reward"] = oppo_reward["rewards"]
-            out["reward"] = td["reward"]
+            if self.opponent_type == "heuristic":
+                oppo_reward = self.opponent(td.clone()).forward()
+                td["reward"] = oppo_reward["rewards"]
+                out["reward"] = td["reward"]
+            elif self.opponent_type == "rl":
+                out_prog = self.opponent.calculoss_step(td.clone(), batch=None, phase="val")
+                td["reward"] = out_prog["reward"]
+                out["reward"] = td["reward"]
         return td, out
     
     def update_step(self, td, out, phase, dataloader_idx: int = None, optimizer=None):
@@ -185,7 +204,7 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
                     )
                      
                     # Compute the ratio of probabilities of new and old actions: log(action|s)=log(pw1*pw2*pw3) = log(pw1) + log(pw2) + log(pw3)
-                    ratio = torch.exp((log_prob.sum(-1) - sub_td["log_likelihood_adv"].sum(-1).detach())).view(
+                    ratio = torch.exp((log_prob.sum(-1) - sub_td["log_likelihood_adv"].sum(-1))).view(
                         -1, 1
                     )  # ? [batch*num_loc]
 
@@ -245,6 +264,12 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         
         return out
     
+    def wrap_dataset(self, dataset):
+        """Wrap dataset with policy-specific wrapper. This is useful i.e. in REINFORCE where we need to
+        collect the greedy rollout baseline outputs.
+        """
+        return dataset
+    
     def shared_step(
         self, batch: Any, batch_idx: int, phase: str, dataloader_idx: int = None
     ):
@@ -254,4 +279,39 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
         metrics = self.log_metrics(out, phase, dataloader_idx=dataloader_idx)
 
         return {"loss": out.get("loss", None), **metrics}
+    
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: Union[_PATH, IO],
+        map_location: _MAP_LOCATION_TYPE = None,
+        hparams_file: Optional[_PATH] = None,
+        strict: bool = False,
+        load_baseline: bool = True,
+        **kwargs: Any,
+    ) -> Self:
+        """Load model from checkpoint/
+
+        Note:
+            This is a modified version of `load_from_checkpoint` from `pytorch_lightning.core.saving`.
+            It deals with matching keys for the baseline by first running setup
+        """
+
+        if strict:
+            log.warning("Setting strict=False for loading model from checkpoint.")
+            strict = False
+
+        # Do not use strict
+        loaded = _load_from_checkpoint(
+            cls,
+            checkpoint_path,
+            map_location,
+            hparams_file,
+            strict,
+            **kwargs,
+        )
+
+       
+
+        return cast(Self, loaded)
       
