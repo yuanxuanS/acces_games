@@ -229,6 +229,7 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
                 batch_size=self.val_batch_size,
                 device=get_lightning_device(self),
                 dataset_size=self.data_cfg["val_data_size"],
+                adv=self.adversary
             )
 
     def configure_optimizers(self, parameters=None):
@@ -486,21 +487,22 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         
     def on_train_epoch_end(self):
         """Callback for end of training epoch: we evaluate the baseline"""
-        if not self.fix_protagonist:
-            self.protagonist.baseline.epoch_callback(
+        if not self.fix_protagonist:    
+            self.protagonist.baseline.epoch_callback(   
                 self.protagonist.policy,
                 env=self.env,
                 batch_size=self.val_batch_size,
                 device=get_lightning_device(self),
                 epoch=self.current_epoch,
                 dataset_size=self.data_cfg["val_data_size"],
-            )
+                adv=self.adversary
+            )   # val验证有adv下的mean，看是否需要更新baseline的model
         
         """Called at the end of the training epoch. This can be used for instance to update the train dataset
         with new data (which is the case in RL).
         """
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
-        self.train_dataset = self.wrap_dataset(train_dataset)
+        self.train_dataset = self.wrap_dataset(train_dataset)       # 调用baseline计算baselin_mean=extra，train时不用重复调用
         # log.info("end of an epoch")
         # print(f"end of an epoch, time {time.time()}")
         
@@ -515,13 +517,16 @@ class PSRO_AM_PPO(RL4COMarlLitModule):
         collect the greedy rollout baseline outputs.
         """
         """Wrap dataset from baseline evaluation. Used in greedy rollout baseline"""
-
-        return self.protagonist.baseline.wrap_dataset(
-            dataset,
-            self.env,
-            batch_size=self.val_batch_size,
-            device=get_lightning_device(self),
-        )
+        if self.fix_adversary:
+            return self.protagonist.baseline.wrap_dataset(
+                dataset,
+                self.env,
+                batch_size=self.val_batch_size,
+                device=get_lightning_device(self),
+                adv=self.adversary
+            )
+        else:
+            return self.adversary.wrap_dataset(dataset)
 
     def _dataloader(self, dataset, batch_size, shuffle=False):
         """Handle both single datasets and list / dict of datasets"""

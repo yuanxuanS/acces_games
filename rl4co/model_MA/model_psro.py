@@ -125,7 +125,7 @@ class Protagonist:
         # max_epoch = 1
         if epoch == 0:
             max_epoch = cfg.prog_epoch1  #20 # 
-        elif epoch > 0 and epoch < 5:
+        elif epoch > 0 and epoch < 3:
             max_epoch = cfg.prog_epoch2  #20  # 
         else: 
             max_epoch = cfg.prog_epoch3
@@ -134,6 +134,7 @@ class Protagonist:
         cur_policy = self.get_curr_policy()     # sample a AttentionModel's policy
         # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
         cur_model: LightningModule = hydra.utils.instantiate(cfg.model, self.env, policy=cur_policy)
+        cur_model.baseline.with_adv = True
         cur_model = cur_model.to(self.device)
         # get adver's policy from its' strategy: 
         adver_curr_policy, adver_curr_critic = adversary.get_curr_policy()
@@ -335,16 +336,22 @@ class Adversary:
             tmp_critic.load_state_dict(critic_w)
             self.correspond_critic.append(tmp_critic)
 
-    def get_best_response(self, protagonist, cfg, callbacks, logger):
+    def get_best_response(self, protagonist, cfg, callbacks, logger, epoch):
         '''
         fix Protagonist and update adversary
         '''
         print("===== in adversary bs ====")
-        
+        if epoch == 0:
+            max_epoch = cfg.adver_epoch1  #20 # 
+        elif epoch > 0 and epoch < 3:
+            max_epoch = cfg.adver_epoch2  #20  # 
+        else: 
+            max_epoch = cfg.adver_epoch3
         # get protagonist's policy from strategy: params add
         prog_policy = protagonist.get_curr_policy()
         # log.info(f"Instantiating protagonist model <{cfg.model._target_}>")
         prog_model: LightningModule = hydra.utils.instantiate(cfg.model, self.env, policy=prog_policy)
+        prog_model.baseline.with_adv = True
         prog_model = prog_model.to(self.device)
         # get adver's policy from its' strategy: params add
         cur_policy, cur_critic = self.get_curr_policy()     # PPOContinous's policy
@@ -365,7 +372,7 @@ class Adversary:
                                                             prog_strategy=protagonist.strategy,
                                                             adver_strategy=self.strategy)
 
-        max_epoch = cfg.adver_epoch
+        
         if cfg.get("train"):
             log.info(f"Instantiating trainer in adver bs ...")
             trainer: RL4COTrainer = hydra.utils.instantiate(

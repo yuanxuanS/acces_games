@@ -2,20 +2,26 @@
 
 defaults:
   
-  - override /env: svrp.yaml
+  - override /env: opsa.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml  # csv.yaml  #
   
 # psro params
-iters: 30
+iters: 10000
 epsilon: 0.01
-prog_epoch1: 15
+prog_epoch1: 10
 prog_epoch2: 10
-adver_epoch: 5
+prog_epoch3: 10
+adver_epoch1: 10
+adver_epoch2: 10
+adver_epoch3: 10
+
+eval_baseline: False
+baseline_method: "cw"
 
 env:
-  num_loc: 50
+  num_loc: 20
 
 logger:
   wandb:
@@ -29,8 +35,8 @@ logger:
 model_psro:
   batch_size:  512 #10 #
   val_batch_size: 1024  #10 #
-  test_batch_size: 1024 #10   #
-  train_data_size: 640_000  #100  #
+  test_batch_size: 100 #10   #
+  train_data_size: 10_000  #100  #
   val_data_size: 10_000  #
   test_data_size: 100  #100 #
   data_dir: "data${paths.stoch_idx}/"
@@ -45,13 +51,40 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [7, 12] #
+    milestones: [5, 8] #
     gamma: 0.1
+  batch_size: ${model_psro.batch_size}
+  val_batch_size: ${model_psro.val_batch_size}
+  test_batch_size: ${model_psro.test_batch_size}
+  train_data_size: ${model_psro.train_data_size}
+  val_data_size: ${model_psro.val_data_size}
+  test_data_size: ${model_psro.test_data_size}
   data_dir: "data${paths.stoch_idx}/"
+  baseline_kwargs:
+    with_adv: true
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: /home/panpan/rl4co/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
+load_prog_from_path: /home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-20_01-52-52/rl4co/qy23fvab/checkpoints/epoch=49-step=1000.ckpt
+# stoch
+#/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/rl4co/hnwv41v5/checkpoints/epoch=49-step=1000.ckpt
+load_adv_from_path: /home/panpan/rl4co/logs/train/runs/opsa20/ppo-adv-opsa20/2024-05-20_02-08-31/rl4co/l4kx62cj/checkpoints/epoch=49-step=2000.ckpt
+
+
+#/home/panpan/rl4co/logs/train/runs/svrp20/ppo-adv-svrp20/2024-05-19_22-09-11/rl4co/ne4stciu/checkpoints/epoch=49-step=2000.ckpt
+
+#/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-16_11-37-16/rl4co/x80zwa1a/checkpoints/epoch=99-step=62500.ckpt
+# /home/panpan/rl4co/logs/train/runs/svrp50/am-svrp50/2024-05-18_16-10-46/rl4co/uiyuuo8l/checkpoints/epoch=99-step=31300.ckpt
+#/home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-18_11-37-09/rl4co/j9west2k/checkpoints/epoch=99-step=125000.ckpt
+# /home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-18_14-29-19/rl4co/ts4nz25i/checkpoints/epoch=99-step=125000.ckpt
+#/home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-17_22-55-45/rl4co/veb64thy/checkpoints/epoch=99-step=125000.ckpt
+#/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-14_15-45-07/rl4co/1n85aevy/checkpoints/epoch=99-step=125000.ckpt
+# 
+#/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-16_11-37-16/rl4co/x80zwa1a/checkpoints/epoch=99-step=62500.ckpt
+# old
+#/home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-13_20-27-21/rl4co/x2lwyfgq/checkpoints/epoch=99-step=125000.ckpt
+# /home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-08_09-14-24/rl4co/cks8a5wy/checkpoints/epoch=99-step=125000.ckpt
+# /home/panpan/rl4co/logs/train/runs/svrp50/am-svrp50/2024-05-04_22-56-20/rl4co/n4no1ty5/checkpoints/epoch=99-step=125000.ckpt
 # "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt"
 # null
 
@@ -60,13 +93,21 @@ train_with_pretrain: null
 
 model_adversary:
   opponent: null
+  opponent_type: "no"
+  clip_range: 0.2
+  ppo_epochs: 2
+  mini_batch_size: 512
+  vf_lambda: 0.5
+  entropy_lambda: 0.05
+  normalize_adv: false
+  max_grad_norm: 0.5
   optimizer_kwargs:
-    lr: 1e-3
+    lr: 5e-5
     weight_decay: 0
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [2, 4]
+    milestones: [5, 8, 13]
     gamma: 0.1
   data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:

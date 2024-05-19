@@ -160,7 +160,7 @@ def update_payoff(cfg, env, data_pth, stoch_data, save_dir,
                 stoch_data_ = {}
                 for sk in stochdata_key_mapping[env.name]:
                     stoch_data_[sk]= stoch_data[sk][c]
-                stoch_data_ = TensorDict(stoch_data_, batch_size=cfg.model_psro.test_batch_size, device=device)     # tensodridct的batch_size必须小于 总size， dataloader可以不是
+                stoch_data_ = TensorDict(stoch_data_, batch_size=cfg.model_psro.test_data_size, device=device)     # tensodridct的batch_size必须= 总size， dataloader可以不是
                 stoch_dataset = TensorDictDataset(stoch_data_)
                 stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
@@ -275,6 +275,21 @@ def eval_oneprog_adv_allgraph(rewards_graph, adv_strategy):
     reward_adv_graphs = np.matmul(rewards_graph, np.array(adv_strategy))
     return reward_adv_graphs
 
+# def get_stoch_by_adv(adver, td_init, ):
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     adver_model = adver.to(device)
+#     adver_model.eval()
+#     out_adv = adver_model(td_init.clone(), phase="test", return_actions=True)
+#     td = env.reset_stochastic_var(td_init, out_adv["action_adv"][..., None])    # env transition: get new real demand
+    
+#     for sk in stochdata_key_lst:
+#         if adv_idx not in stoch_data[sk].keys():
+#             stoch_data[sk][adv_idx] = td[sk].clone()        #  save stochastic data, [minibatch, size 
+#         else:
+#             stoch_data[sk][adv_idx] = torch.cat((stoch_data[sk][adv_idx], td[sk].clone()), dim=0)   # [bigbatch, size]
+#     # print(f"save stoch_data to {save_pth}, {stoch_data[sk][adv_idx][0]}")
+#     np.savez(save_pth, stoch_data[sk][adv_idx].cpu())       # 自动转化为numpy
+
 def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, 
               new_stoch_data=False, save_pth = "", 
               eval_baseline=False, baseline="cw", baseline_result_fn=""):
@@ -315,7 +330,7 @@ def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None,
             for sk in stochdata_key_lst:
                 td_init.set(sk, stoch_td[sk])
                 td = td_init
-            print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]}")
+            # print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]}")
     else:
         td = td_init.clone()
     

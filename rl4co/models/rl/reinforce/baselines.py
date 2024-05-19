@@ -111,7 +111,7 @@ class WarmupBaseline(REINFORCEBaseline):
     def setup(self, *args, **kw):
         self.baseline.setup(*args, **kw)
 
-    def eval(self, td, reward, env=None):
+    def eval(self, td, reward, env=None, **kw):
         if self.alpha == 1:
             return self.baseline.eval(td, reward, env)
         if self.alpha == 0:
@@ -164,12 +164,14 @@ class RolloutBaseline(REINFORCEBaseline):
     def __init__(self, bl_alpha=0.05, **kw):
         super(RolloutBaseline, self).__init__()
         self.bl_alpha = bl_alpha
+        self.with_adv = kw["with_adv"] if "with_adv" in kw else False
+        
 
     def setup(self, *args, **kw):
         self._update_model(*args, **kw)
 
     def _update_model(
-        self, model, env, batch_size=64, device="cpu", dataset_size=None, dataset=None
+        self, model, env, batch_size=64, device="cpu", dataset_size=None, dataset=None, **kw
     ):
         """Update model and rollout baseline values"""
         self.model = copy.deepcopy(model).to(device)
@@ -178,9 +180,13 @@ class RolloutBaseline(REINFORCEBaseline):
             self.dataset = env.dataset(batch_size=[dataset_size])
 
         log.info("Evaluating baseline model on evaluation dataset")
-        self.bl_vals = (
-            self.rollout(self.model, env, batch_size, device, self.dataset).cpu().numpy()
-        )
+        if self.with_adv:
+            self.adv = kw.get("adv") if kw.get("adv") else self.adv
+            self.bl_vals = self.rollout_adv(self.model, env, batch_size, device, adv=self.adv).cpu().numpy()
+        else:
+            self.bl_vals = (
+                self.rollout(self.model, env, batch_size, device, self.dataset).cpu().numpy()
+            )
         self.mean = self.bl_vals.mean()
 
     def eval(self, td, reward, env):
@@ -195,12 +201,18 @@ class RolloutBaseline(REINFORCEBaseline):
         return reward, 0
 
     def epoch_callback(
-        self, model, env, batch_size=64, device="cpu", epoch=None, dataset_size=None
+        self, model, env, batch_size=64, device="cpu", epoch=None, dataset_size=None, **kw
     ):
         """Challenges the current baseline with the model and replaces the baseline model if it is improved"""
         log.info("Evaluating candidate model on evaluation dataset")
-        candidate_vals = self.rollout(model, env, batch_size, device).cpu().numpy()
-        candidate_mean = candidate_vals.mean()
+        if not self.with_adv:
+            adv = None
+            candidate_vals = self.rollout(model, env, batch_size, device).cpu().numpy()
+        else:
+            adv = kw["adv"]
+            candidate_vals = self.rollout_adv(model, env, batch_size, device, adv=adv).cpu().numpy()
+
+        candidate_mean = candidate_vals.mean()  
 
         log.info(
             "Candidate mean: {:.3f}, Baseline mean: {:.3f}".format(
@@ -216,7 +228,7 @@ class RolloutBaseline(REINFORCEBaseline):
             log.info("p-value: {:.3f}".format(p_val))
             if p_val < self.bl_alpha:
                 log.info("Updating baseline")
-                self._update_model(model, env, batch_size, device, dataset_size)
+                self._update_model(model, env, batch_size, device, dataset_size, adv)
 
     def rollout(self, model, env, batch_size=64, device="cpu", dataset=None):
         """Rollout the model on the given dataset"""
@@ -237,6 +249,28 @@ class RolloutBaseline(REINFORCEBaseline):
         rewards = torch.cat([eval_model(batch) for batch in dl], 0)
         return rewards
 
+    def rollout_adv(self, model, env, batch_size=64, device="cpu", dataset=None, adv=None):
+        """Rollout the model on the given dataset"""
+
+        # if dataset is None, use the dataset of the baseline
+        dataset = self.dataset if dataset is None else dataset
+        
+        model.eval()
+        model = model.to(device)
+
+        def eval_model(batch):
+            with torch.no_grad():
+                batch = env.reset(batch.to(device))
+                # adv reset stoch var
+                adv.eval()
+                out = adv.policy(batch, "val")
+                batch = env.reset_stochastic_var(batch, out["action_adv"][..., None])
+                return model(batch, env, decode_type="greedy")["reward"]
+
+        dl = DataLoader(dataset, batch_size=batch_size, collate_fn=tensordict_collate_fn)
+
+        rewards = torch.cat([eval_model(batch) for batch in dl], 0)
+        return rewards
     def wrap_dataset(self, dataset, env, batch_size=64, device="cpu", **kw):
         """Wrap the dataset in a baseline dataset
 
@@ -245,11 +279,16 @@ class RolloutBaseline(REINFORCEBaseline):
             at every call but just once. Values are added to the dataset. This also allows for
             larger batch sizes since we evauate the model without gradients.
         """
-        rewards = (
-            self.rollout(self.model, env, batch_size, device, dataset=dataset)
-            .detach()
-            .cpu()
-        )
+        if self.with_adv:
+            rewards = (
+                self.rollout_adv(self.model, env, batch_size, device, dataset=dataset, adv=kw["adv"]).detach().cpu()
+            )
+        else:
+            rewards = (
+                self.rollout(self.model, env, batch_size, device, dataset=dataset)
+                .detach()
+                .cpu()
+            )
         return dataset.add_key("extra", rewards)  
 
     def __getstate__(self):
@@ -292,6 +331,11 @@ def get_reinforce_baseline(name, **kw):
         warmup_epochs = kw.get("n_epochs", 1)
         warmup_exp_beta = kw.get("exp_beta", 0.8)
         bl_alpha = kw.get("bl_alpha", 0.05)
+        # kw_dict = {k: v for k, v in kw.items() if k not in ["n_epochs", "exp_beta", "bl_alpha"]}
+        if "with_adv" in kw:
+            return WarmupBaseline(
+            RolloutBaseline(bl_alpha=bl_alpha, with_adv=kw["with_adv"]), warmup_epochs, warmup_exp_beta
+        )
         return WarmupBaseline(
             RolloutBaseline(bl_alpha=bl_alpha), warmup_epochs, warmup_exp_beta
         )

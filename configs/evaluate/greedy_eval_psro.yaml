@@ -19,6 +19,7 @@ evaluate: true
 
 
 
+
 # 要加载的psro prog的模型的位置
 # svrp20-1:
 # /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-07_21-21-53
@@ -38,13 +39,16 @@ evaluate: true
 # /home/panpan/rl4co/logs/train_psro/runs/svrp50/am-svrp50/2024-05-09_09-42-49
 # svrp50-2
 # /home/panpan/rl4co/logs/train_psro/runs/svrp50/am-svrp50/2024-05-10_17-28-03
-evaluate_prog_dir: "/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-11_22-31-01"
-ckpt_psro_path: "/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-11_22-31-01"
-prog_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-11_22-31-01/psro/info.npz"
+# new
+#"/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-16_16-38-09"
+eval_no_saved_data: true
+evaluate_prog_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
+ckpt_psro_path: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12"
+prog_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"
 eval_withadv: true
 another_adv: false
-evaluate_adv_dir: /home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-11_22-31-01
-adv_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-11_22-31-01/psro/info.npz"
+evaluate_adv_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
+adv_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"
 
 # 以下变量还未用到
 # another_psro_prog_path: "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-03-06_22-38-52/rl4co-adv/abok0x6b/checkpoints/epoch=99-step=305000.ckpt"

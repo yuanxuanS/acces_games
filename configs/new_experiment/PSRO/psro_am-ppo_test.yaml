@@ -9,11 +9,17 @@ defaults:
   
 
 # psro params
-iters: 2
+iters: 20
 epsilon: 0.01
-prog_epoch1: 1
-prog_epoch2: 1
-adver_epoch: 1
+prog_epoch1: 5
+prog_epoch2: 5
+prog_epoch3: 5
+adver_epoch: 5
+
+eval_baseline: True
+baseline_method: "cw"
+
+
 env:
   num_loc: 20
 
@@ -28,7 +34,7 @@ logger:
 
 model_psro:
   batch_size:  10 #
-  val_batch_size: 1024  #10 #
+  val_batch_size: 100  #10 #
   test_batch_size: 100 #10   #
   train_data_size: 100  #
   val_data_size: 10_000  #
@@ -51,7 +57,7 @@ model:
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
-load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt"
+load_prog_from_path: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-16_11-37-16/rl4co/x80zwa1a/checkpoints/epoch=99-step=62500.ckpt"
 
 train_with_pretrain: null
   # "/home/panpan/rl4co/logs/train_rarl/runs/svrp20/am-svrp20/2024-01-11_22-28-55/csv/version_0/checkpoints/epoch=106-step=627500.ckpt"
