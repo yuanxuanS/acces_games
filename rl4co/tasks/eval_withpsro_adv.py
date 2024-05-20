@@ -95,16 +95,16 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
 
         data = np.load(cfg.adv_npz_pth)  # 加载
         adver_strategy = data['adver_strategy']
-        if adversary_tmp.no_zeroth:
-            print(f"before: adver strate is {adver_strategy}")
-            adver_strategy = adver_strategy[1:]
-            print(f"after: adver strate is {adver_strategy}")
+        # if adversary_tmp.no_zeroth:
+        #     print(f"before: adver strate is {adver_strategy}")
+        #     adver_strategy = adver_strategy[1:]
+        #     print(f"after: adver strate is {adver_strategy}")
 
         prog_strategy = data['prog_strategy']
-        if protagonist_tmp.no_zeroth:
-            print(f"before: prog strate is {prog_strategy}")
-            prog_strategy = prog_strategy[1:]
-            print(f"after:prog strate is {prog_strategy}")
+        # if protagonist_tmp.no_zeroth:
+        #     print(f"before: prog strate is {prog_strategy}")
+        #     prog_strategy = prog_strategy[1:]
+        #     print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file

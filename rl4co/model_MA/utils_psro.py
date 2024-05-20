@@ -291,7 +291,7 @@ def eval_oneprog_adv_allgraph(rewards_graph, adv_strategy):
 #     np.savez(save_pth, stoch_data[sk][adv_idx].cpu())       # 自动转化为numpy
 
 def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, 
-              new_stoch_data=False, save_pth = "", 
+              new_stoch_data=False,
               eval_baseline=False, baseline="cw", baseline_result_fn=""):
     '''
         加载batch数据, 返回一次evaluation的reward: prog-adver
@@ -328,7 +328,7 @@ def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None,
             for sk in stochdata_key_lst:
                 td_init.set(sk, stoch_td[sk])
             td = td_init
-            # print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]}")
+            print(f"load {adv_idx} stoch data: {td[stochdata_key_lst[0]][0]} from this batch")
     else:
         td = td_init.clone()
     
