@@ -313,7 +313,7 @@ class CSPEnv(RL4COEnvBase):
             .uniform_(-1, 1)
         ).to(self.device)
 
-        stochastic_maxcover = self.get_stoch_var(max_cover.to("cpu"),
+        stochastic_maxcover = get_stoch_var(max_cover.to("cpu"),
                                                 locs.to("cpu"), 
                                                 weather[:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
@@ -342,7 +342,7 @@ class CSPEnv(RL4COEnvBase):
         '''
         
         locs_cust = td["locs"].clone()
-        stochastic_maxcover = self.get_stoch_var(td["stochastic_maxcover"].to("cpu"),
+        stochastic_maxcover = get_stoch_var(td["stochastic_maxcover"].to("cpu"),
                                                 locs_cust.to("cpu"), 
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),

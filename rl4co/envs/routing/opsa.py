@@ -129,7 +129,7 @@ class OPSAEnv(RL4COEnvBase):
         
             # influence prize by attack prob
             # tmp = torch.rand((batch_size, self.num_loc)).to(self.device)
-            real_prob = self.get_stoch_var(attack_prob.to("cpu"),
+            real_prob = get_stoch_var(attack_prob.to("cpu"),
                                      locs.to("cpu"),
                                      weather[:, None, :].
                                      repeat(1, self.num_loc, 1).to("cpu"),
@@ -371,7 +371,7 @@ class OPSAEnv(RL4COEnvBase):
         '''
         batch_size = td["cost"].size(0)
         locs_cust = td["locs"].clone()
-        real_prob = self.get_stoch_var(td["attack_prob"].to("cpu"),
+        real_prob = get_stoch_var(td["attack_prob"].to("cpu"),
                                                 locs_cust.to("cpu"), 
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),

@@ -92,7 +92,7 @@ class SVRPEnv(CVRPEnv):
         td_load["locs"]= SVRPEnv.a_loc_with_depot[:, 1:, ...].repeat(batch_size, 1, 1) 
         td_load["demand"]= SVRPEnv.a_demand.repeat(batch_size, 1) / td_load["capacity"][:, None]
         if SVRPEnv.generate_method == "modelize":
-            stochastic_demand = self.get_stoch_var(td_load["demand"].to("cpu"),
+            stochastic_demand = get_stoch_var(td_load["demand"].to("cpu"),
                                                     td_load["locs"].to("cpu").clone(), 
                                                     td_load["weather"][:, None, :].
                                                     repeat(1, self.num_loc, 1).to("cpu"),
@@ -234,7 +234,7 @@ class SVRPEnv(CVRPEnv):
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
-            stochastic_demand = self.get_stoch_var(demand.to("cpu"),
+            stochastic_demand = get_stoch_var(demand.to("cpu"),
                                                    locs_with_depot[..., 1:, :].to("cpu").clone(), 
                                                    weather[:, None, :].
                                                    repeat(1, self.num_loc, 1).to("cpu"),
@@ -297,7 +297,7 @@ class SVRPEnv(CVRPEnv):
         elif self.generate_method == "modelize":
             # alphas = torch.rand((n_problems, n_nodes, 9, 1))      # =np.random.random, uniform dis(0, 1)
 
-            stochastic_demand = self.get_stoch_var(demand.to("cpu"),
+            stochastic_demand = get_stoch_var(demand.to("cpu"),
                                                    locs_with_depot[..., 1:, :].to("cpu").clone(), 
                                                    weather[:, None, :].
                                                    repeat(1, self.num_loc, 1).to("cpu"),
@@ -350,7 +350,7 @@ class SVRPEnv(CVRPEnv):
 
             locs_cust = td["locs"].clone()
             locs_cust = locs_cust[:, 1:, :]
-            stochastic_demand = self.get_stoch_var(td["demand"].to("cpu"),
+            stochastic_demand = get_stoch_var(td["demand"].to("cpu"),
                                                    locs_cust.to("cpu"), 
                                                    td["weather"][:, None, :].
                                                    repeat(1, self.num_loc, 1).to("cpu"),
