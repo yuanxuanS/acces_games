@@ -34,6 +34,7 @@ import os
 import time
 from rl4co.model_MA import Protagonist, Adversary
 from rl4co.model_MA.utils_psro import *
+from rl4co.model_MA.utils_psro_eval import *
 
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
@@ -453,6 +454,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                             stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
                             rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
                                                     protagonist_model, adversary_model, True, stoch_data_save_pth, False,)
+                            
                         batch_rl_mean, batch_rl_allg = rl_res
                         batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -468,8 +470,11 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                             bl_rewards_all = batch_bl_allg
                         else:
                             bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
-                
-                    # 
+                    print(f" r-{r} c-{c}", time.time())
+                    if not loaded:
+                        print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")
+                        np.savez(stoch_data_save_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+
                     rewards_rl.append(rl_rewards_all.cpu().tolist())
             rewards_rl = np.array(rewards_rl)
             print("shape ", rewards_rl.shape)
@@ -531,32 +536,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                     eval_prog_strategy=prog_strategy)  # 保
     return None, None
 
-def eval_allgraph(rewards_graph, prog_strategy, adver_strategy):
-    '''
-    rewards_graph: numpy array, shape:(graph_nums, pro_policy_Num, adv_policy_Num)
-    adver_strategy: numpy array, shape:(adv_policy_Num)
-    prog_strategy: numpy array, shape:(pro_policy_Num)
-    '''
-    reward_prog_graph = np.matmul(rewards_graph, np.array(adver_strategy))
-    reward_adver_graph = np.matmul(reward_prog_graph, np.array(prog_strategy))
-    return reward_adver_graph
 
-def eval_noadver(payoff, prog_strategy):
-    '''
-    根据strategy和payoff表得到, 无adver下
-    '''
-    A = np.array(payoff)
-    rps = nash.Game(A)
-    result = rps[prog_strategy, 1]
-    return result[0]
-
-def eval_noadver_allgraph(rewards_graph, prog_strategy):
-    '''
-    rewards_graph: numpy array, shape:(graph_nums, pro_policy_Num)
-    prog_strategy: numpy array, shape:(pro_policy_Num)
-    '''
-    reward_prog_graphs = np.matmul(rewards_graph, np.array(prog_strategy))
-    return reward_prog_graphs
 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="main_psro_frame.yaml")
 def train_psro(cfg: DictConfig) -> Optional[float]:

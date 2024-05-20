@@ -324,8 +324,6 @@ def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None,
                     stoch_data[sk][adv_idx] = td[sk].clone()        #  save stochastic data, [minibatch, size 
                 else:
                     stoch_data[sk][adv_idx] = torch.cat((stoch_data[sk][adv_idx], td[sk].clone()), dim=0)   # [bigbatch, size]
-            print(f"save stoch_data to {save_pth}, {stoch_data[sk][adv_idx][0]}")
-            np.savez(save_pth, stoch_data[sk][adv_idx].cpu())       # 自动转化为numpy
         else:       # load saved stoch data and reset td
             for sk in stochdata_key_lst:
                 td_init.set(sk, stoch_td[sk])
