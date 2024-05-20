@@ -116,7 +116,7 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
 
         if cfg.get("eval_rl_prog"):
             # 
-            print("eval rl agent with psro-adversary")
+            print("eval rl agent with psro-adversary on ", test_data_pth)
             
             rl_prog_pth = cfg.rl_prog_pth
             protagonist_model = protagonist_model.load_from_checkpoint(rl_prog_pth)

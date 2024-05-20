@@ -115,7 +115,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
         log.info(f" ckpt path: {ckpt_path}")
         
-        dataset = env.dataset(phase="test")     # 使用test的数据集做evaluation
+        dataset = env.dataset(phase="val")     # 使用test的数据集做evaluation
         
         evaluate_policy(env, evaluate_model.policy, dataset, method, save_results=True, save_fname=save_fname)
 

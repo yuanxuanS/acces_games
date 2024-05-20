@@ -25,13 +25,7 @@ DISTRIBUTIONS_PER_PROBLEM = {
     "pdp": [None],
 }
 
-STOCH_PARAMS = {
-    0: [0.6, 0.4, 0],
-    1: [0.6, 0.2, 0.2],
-    2: [0.8, 0.2, 0.0],
-    3: [0.8, 0.,  0.2],
-    4: [0.4, 0.3, 0.3]
-}
+from rl4co.envs.routing.env_utils import STOCH_PARAMS
 STOCH_IDX = 0
 
 def generate_env_data(env_type, *args, **kwargs):

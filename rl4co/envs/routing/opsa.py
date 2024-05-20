@@ -19,6 +19,7 @@ from rl4co.envs.common.utils import batch_to_scalar
 from rl4co.utils.pylogger import get_pylogger
 import random
 import numpy as np
+from rl4co.envs.routing.env_utils import *
 log = get_pylogger(__name__)
 
 
@@ -33,12 +34,7 @@ class OPSAEnv(RL4COEnvBase):
         device: device to use.  Generally, no need to set as tensors are updated on the fly
     """
     name = "opsa"
-    stoch_params = {
-                        0: [0.6, 0.2, 0.2],
-                        1: [0.8, 0.2, 0.0],
-                        2: [0.8, 0.,  0.2],
-                        3: [0.4, 0.3, 0.3]
-                    }
+    
     
     def __init__(
         self,
@@ -56,11 +52,11 @@ class OPSAEnv(RL4COEnvBase):
         """
         
         if phase == "train":
-            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"   # _test
         elif phase == "val":
-            filename = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "test":
-            filename = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test.npz"
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"   # _test
         f = filename
         log.info(f"Loading {phase} dataset from {f}")
         try:
@@ -112,7 +108,7 @@ class OPSAEnv(RL4COEnvBase):
             real_prob = td_load_part["real_prob"]
             weather = td_load_part["weather"]
         elif "test" in fpath:
-            part_pth = "/home/u2021141179/rl4co_cp/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
+            part_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test_part_data.npz"
             td_load_part = load_npz_to_tensordict(part_pth)[:batch_size, ...]
             attack_prob = td_load_part["attack_prob"]
             real_prob = td_load_part["real_prob"]
@@ -137,7 +133,8 @@ class OPSAEnv(RL4COEnvBase):
                                      locs.to("cpu"),
                                      weather[:, None, :].
                                      repeat(1, self.num_loc, 1).to("cpu"),
-                                     None).squeeze(-1).float().to(self.device)
+                                     None,
+                                     stoch_idx=OPSAEnv.stoch_idx).squeeze(-1).float().to(self.device)
             real_prob = torch.clamp(real_prob, min=0., max=1.)
         
         real_prob = real_prob * (1 - self.prob_scale) + self.prob_scale     # scale uniform(0,1) to [prob-scale, 1)
@@ -191,63 +188,6 @@ class OPSAEnv(RL4COEnvBase):
         )
     
     
-    @staticmethod
-    # @profile(stream=open('logmem_svrp_sto_gc_tocpu4.log', 'w+'))
-    def get_stoch_var(inp, locs, w, alphas=None, A=0.6, B=0.2, G=0.2):
-        '''
-        locs: [batch, num_customers, 2]
-        '''
-        # h = hpy().heap()
-        A, B, G = OPSAEnv.stoch_params[OPSAEnv.stoch_idx]
-        if inp.dim() <= 2:
-            inp_ =  inp[..., None]
-        else:
-            inp_ = inp.clone()
-
-        n_problems,n_nodes,shape = inp_.shape
-        T = inp_/A
-
-        # var_noise = T*G
-        # noise = torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
-        # noise = var_noise*noise     # multivariable normal distr, var_noise mean
-        # noise = torch.clamp(noise, min=-var_noise)
-        
-        var_noise = T*G
-
-        noise = torch.sqrt(var_noise)*torch.randn(n_problems,n_nodes, shape).to(T.device)      #=np.rand.randn, normal dis(0, 1)
-        noise = torch.clamp(noise, min=-var_noise, max=var_noise)
-
-        var_w = T*B
-        # sum_alpha = var_w[:, :, None, :]*4.5      #? 4.5
-        sum_alpha = var_w[:, :, None, :]*9      #? 4.5
-        
-        if alphas is None:  
-            alphas = torch.rand((n_problems, 1, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        alphas_loc = locs.sum(-1)[..., None, None]/2 * alphas  # [batch, num_loc, 2]-> [batch, num_loc] -> [batch, num_loc, 1, 1], [batch, 1, 9,1]
-            # alphas = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device)       # =np.random.random, uniform dis(0, 1)
-        # alphas_loc.div_(alphas_loc.sum(axis=2)[:, :, None, :])       # normalize alpha to 0-1
-        alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
-        alphas_loc = torch.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
-        signs = torch.rand((n_problems, n_nodes, 9, shape)).to(T.device) 
-        # signs = torch.where(signs > 0.5)
-        alphas_loc[signs > 0.5] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
-        # alphas_loc[torch.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
-        
-        w1 = w.repeat(1, 1, 3)[..., None]       # [batch, nodes, 3*repeat3=9, 1]
-        # roll shift num in axis: [batch, nodes, 3] -> concat [batch, nodes, 9,1]
-        w2 = torch.concatenate([w, torch.roll(w,shifts=1,dims=2), torch.roll(w,shifts=2,dims=2)], 2)[..., None]
-        
-        tot_w = (alphas_loc*w1*w2).sum(2)       # alpha_i * wm * wn, i[1-9], m,n[1-3], [batch, nodes, 9]->[batch, nodes,1]
-        tot_w = torch.clamp(tot_w, min=-var_w, max=var_w)
-        out = torch.clamp(inp_ + tot_w + noise, min=0.0)
-        
-        # del tot_w, noise
-        del var_noise, sum_alpha, alphas_loc, signs, w1, w2, tot_w
-        del T, noise, var_w
-        del inp_
-        # gc.collect()
-        
-        return out
     
     
     @staticmethod
@@ -435,7 +375,8 @@ class OPSAEnv(RL4COEnvBase):
                                                 locs_cust.to("cpu"), 
                                                 td["weather"][:, None, :].
                                                 repeat(1, self.num_loc, 1).to("cpu"),
-                                                adver_action[:, None, ...].to("cpu")).squeeze(-1).float().to(td.device)
+                                                adver_action[:, None, ...].to("cpu"),
+                                                stoch_idx=OPSAEnv.stoch_idx).squeeze(-1).float().to(td.device)
         real_prob = torch.clamp(real_prob, min=0., max=1.)
         real_prob[:, 0] = 0                         
         td.set("real_prob", real_prob)

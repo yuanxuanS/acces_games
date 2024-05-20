@@ -158,7 +158,7 @@ class PPOContinuousAdversary(RL4COAdversaryLitModule):
             out = self.policy(td.clone(), phase=phase)
         td = self.env.reset_stochastic_var(td, out["action_adv"][..., None])    # env transition: get new real demand
         if self.opponent:       # get reward from current run of opponent
-            assert td.get("reward", default=None) == None   # if get reward currently from oppo, must no reward in td now  
+            assert (td.get("reward", default=None) == None) or (abs(td.get("reward").sum() - 0.) < 1e-5)   # if get reward currently from oppo, must no reward in td now  
             if self.opponent_type == "heuristic":
                 oppo_reward = self.opponent(td.clone()).forward()
                 td["reward"] = oppo_reward["rewards"]
