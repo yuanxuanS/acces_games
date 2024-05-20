@@ -105,4 +105,4 @@ def eval_psro(cfg, env, test_data, stoch_data,
 
     time_ = time.time()-st
 
-    return reward_eval, eval_var, time_, stoch_data
+    return rewards_rl, reward_eval, eval_var, time_, stoch_data

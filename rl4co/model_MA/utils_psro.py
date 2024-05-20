@@ -186,8 +186,8 @@ def update_payoff(cfg, env, data_pth, stoch_data, save_dir,
                 
                 rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
                                            protagonist_model, adversary_model, 
-                                           save_stoch_data, save_stoch_pth,
-                                                 eval_bl, cfg.baseline_method, baseline_fn)
+                                           save_stoch_data,
+                                                 eval_bl, cfg.baseline_method, baseline_fn,)
                 batch_rl_mean, batch_rl_allg = rl_res
                 batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -204,6 +204,11 @@ def update_payoff(cfg, env, data_pth, stoch_data, save_dir,
                 else:
                     bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
             
+            stochdata_key_lst = stochdata_key_mapping[env.name]
+            if save_stoch_data:
+                for sk in stochdata_key_lst:
+                    np.savez(save_stoch_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+                print(f"save stoch_data to {save_stoch_pth}, {stoch_data[sk][c][0]}")
             # record rewards of rl and baseline ,only under prog 0 
             if eval_bl and r == 0:
                 rewards_bl.append(bl_rewards_all.cpu().tolist())  

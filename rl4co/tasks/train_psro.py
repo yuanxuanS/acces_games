@@ -409,7 +409,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             
 
 
-            reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data, 
+            rewards_rl, reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data, 
                     prog_strategy, protagonist_tmp, protagonist_model,
                     adver_strategy, adversary_tmp, adversary_model, stoch_data_dir)
             
