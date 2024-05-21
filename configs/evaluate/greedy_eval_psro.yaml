@@ -41,11 +41,15 @@ evaluate: true
 # /home/panpan/rl4co/logs/train_psro/runs/svrp50/am-svrp50/2024-05-10_17-28-03
 # new
 #"/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-16_16-38-09"
-eval_no_saved_data: true
+# eval_no_saved_data: true
 evaluate_prog_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
 ckpt_psro_path: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12"
-prog_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"
-eval_withadv: true
+prog_npz_pth: 
+#/home/panpan/rl4co/logs/train_psro/runs/opsa50/am-opsa50/2024-05-20_21-15-34/psro/info.npz
+#/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-20_14-19-12/psro/info.npz
+#/home/panpan/rl4co/logs/train_psro/runs/csp20/am-csp20/2024-05-20_03-59-47/psro/info.npz
+#"/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"
+eval_withadv: false
 another_adv: false
 evaluate_adv_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
 adv_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"

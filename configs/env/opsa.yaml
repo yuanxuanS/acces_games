@@ -5,8 +5,13 @@ num_loc: 50
 
 stoch_idx: ${paths.stoch_idx}   # for stoch model params
 data_dir: ${paths.root_dir}/data${paths.stoch_idx}/opsa
-dataset_flag: "test"  #"val_sample"        #"test"
-# train_file: svrp_}${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+
+# 在哪个数据集上eval
+eval_dataset: "val" # "val"    
+# 是否对该数据集进行sample
+dataset_state: "sample" # "no_sample"
+dataset_flag: ${env.eval_dataset}_${env.dataset_state}  #"val_sample"        #"test"   # "val"
+train_file: svrp_}${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
 
 val_file: opsa${env.num_loc}_val.npz
 test_file: opsa${env.num_loc}_test.npz

@@ -13,13 +13,14 @@ train: False
 
 test: False 
 
-evaluate_baseline: true
+mode: "evaluate_baseline"
+evaluate: true
 # in evaluate mode, must give these params!!!!!
-# evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33"
-# ckpt_path: "/home/panpan/rl4co/logs/train/runs/tsp50/am-tsp50/2023-12-29_09-28-33/rl4co/mql00v5r/checkpoints/epoch=2-step=3.ckpt"
-evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-14_15-45-07/"
-ckpt_path: "/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-14_15-45-07/rl4co/1n85aevy/checkpoints/epoch=99-step=125000.ckpt"
-#"/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-08_21-14-27/rl4co/sgtdk5tf/checkpoints/epoch=99-step=125000.ckpt"
+evaluate_psro_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
+evaluate_savedir: "/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/"
+ckpt_path: /home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/rl4co/hnwv41v5/checkpoints/epoch=49-step=1000.ckpt
+#/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-20_03-41-40/rl4co/v9xuiw1j/checkpoints/epoch=99-step=2000.ckpt
+#"/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/rl4co/hnwv41v5/checkpoints/epoch=49-step=1000.ckpt"
 evaluate_loc: "${evaluate_savedir}"
-baseline: "LS2"   # ["cw", "tabu"] for svrp; ["LS1", "LS2"] or csp
+baseline: "tabu"   # ["cw", "tabu"] for svrp; ["LS1", "LS2"] or csp
 

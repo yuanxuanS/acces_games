@@ -15,7 +15,7 @@ test: False
 
 mode: "evaluate"
 eval_otherprog_with_psroadv: true
-eval_no_saved_data: false
+
 # run_psroadv_eval.py
 # 要加载的psro的模型的位置
 # svrp20-1:
@@ -39,15 +39,24 @@ eval_no_saved_data: false
 # new
 # /home/panpan/rl4co/logs/train_psro/runs/csp20/am-csp20/2024-05-17_22-22-56
 # "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-16_16-38-09"
+
 evaluate_adv_dir: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
 adv_npz_pth: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/info.npz"
-ckpt_psro_path: "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12"
+ckpt_psro_path: /home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12
+#/home/panpan/rl4co/logs/train_psro/runs/csp20/am-csp20/2024-05-20_03-59-47
+#/home/panpan/rl4co/logs/train_psro/runs/opsa50/am-opsa50/2024-05-20_21-15-34
+#/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-20_04-36-49
+#"/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12"
 
 ## eval rl
-eval_rl_prog: true
+eval_rl_prog: false
 # rl
-rl_prog_dir: /home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10
+rl_prog_dir: /home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/
 rl_prog_pth: /home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/rl4co/hnwv41v5/checkpoints/epoch=49-step=1000.ckpt
+#/home/panpan/rl4co/logs/train/runs/opsa50/am-opsa50/2024-05-20_18-03-16/rl4co/k3zk6zju/checkpoints/epoch=199-step=4000.ckpt
+#/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-20_03-41-40/rl4co/v9xuiw1j/checkpoints/epoch=99-step=2000.ckpt
+#/home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-20_04-17-16/rl4co/nwo4bjx8/checkpoints/epoch=99-step=2000.ckpt
+#/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-43-10/rl4co/hnwv41v5/checkpoints/epoch=49-step=1000.ckpt
 # no stoch
 #/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_20-56-05/rl4co/6bib2wms/checkpoints/epoch=49-step=1000.ckpt
 # sotch
@@ -60,7 +69,7 @@ rl_prog_pth: /home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-05-19_17-4
 #"/home/panpan/rl4co/logs/train/runs/svrp20/am-svrp20/2024-02-27_12-22-21/rl4co/ajzphdl4/checkpoints/epoch=99-step=250000.ckpt"
 
 ## eval baseline
-eval_baseline_prog: false
-baseline_heur: "cw"   # ["cw", "tabu"] for svrp; ["LS1", "LS2"] or csp
+eval_baseline_prog: true
+baseline_heur: "tabu"   # ["cw", "tabu"] for svrp; ["LS1", "LS2"] or csp
 
 
