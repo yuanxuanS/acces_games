@@ -4,6 +4,8 @@ from matplotlib.colors import PowerNorm
 import seaborn as sns
 from scipy.interpolate import make_interp_spline
 
+plt.rcParams['figure.figsize'] = (6.5, 5)
+plt.rcParams['axes.labelsize'] = 15
 def inter(x, y):
     x_smooth = np.linspace(x.min(), x.max(), 300)  # np.linspace 等差数列,从x.min()到x.max()生成300个数，便于后续插值
     y_smooth = make_interp_spline(x, y)(x_smooth)
@@ -12,7 +14,7 @@ def inter(x, y):
 linestyle = ['-', '--', ':', '-.']
 color = ['r', 'g', 'b', 'k']
 
-save_dir = "/home/panpan/rl4co/psro/graphs3/"
+save_dir = "/home/panpan/rl4co/psro/graphs4/"
 def load_psro_info(log_pth):
      
     data = np.load(log_pth+ '/info.npz')  # 加载
@@ -21,10 +23,11 @@ def load_psro_info(log_pth):
     return nashconv, payoffs
 
 
-def draw_jpc(env_name, pth):
+def draw_jpc(env_name, pth, save_format):
     _, payoffs = load_psro_info(pth)
     # plot JPC
     plt.figure()
+    plt.rcParams['font.size'] = 14
     plt.imshow(payoffs, cmap='coolwarm', norm=PowerNorm(3))
     plt.title("utility of PSRO ("+env_name[:-2]+" "+env_name[-2:]+")")
     plt.xlabel("adversary")
@@ -33,8 +36,8 @@ def draw_jpc(env_name, pth):
     graph_name =  "JPC"  #
     name = graph_name +"_log_"+env_name
     global save_dir
-    plt.savefig(save_dir+name+".eps", format="eps")
-
+    plt.savefig(save_dir+name+"."+save_format, format=save_format)
+    plt.close()
     # compute JPC
 
     print(payoffs.shape)
@@ -50,7 +53,7 @@ def draw_jpc(env_name, pth):
     jpc = 1 - (diagonal_sum / size) / (nondiag_sum / (size*size - size))
     print(f"total_sum is {total_sum}, diag sum is {diagonal_sum}, nondiag sum is {nondiag_sum}, jpc is {jpc}")
 
-def plot_nashconv(env_name, pth, window=10, type="inter"):
+def plot_nashconv(env_name, pth, window=10, type="inter", save_format="jpg"):
     nashconv, _ = load_psro_info(pth)
     # plot nashconv
     # plt.plot(nashconv)
@@ -80,18 +83,20 @@ def plot_nashconv(env_name, pth, window=10, type="inter"):
     print(x_data, y_sm)
     
     plt.figure()
-    sns.set(style="darkgrid")
+    plt.rcParams['font.size'] = 14
+    # sns.set(style="darkgrid")
     if type == "inter":
         ax =sns.tsplot(time=x_sm, data=y_sm, color=color[2], linestyle=linestyle[0])
     elif type == "conv":
         ax =sns.tsplot(time=x_data, data=y_sm, color=color[2], linestyle=linestyle[0])
     # ax =sns.tsplot(time=x_data, data=data, color=color[2], linestyle=linestyle[0], alpha=0.3)
-    ax.set_xlabel("Iterations")
-    ax.set_ylabel("Exploitability")
-    ax.set_title(f"{env_name[:-2]} {env_name[-2:]}")
-    # sns.set(font_scale=1.5)
+    plt.xlabel("Iterations", )
+    plt.ylabel("Exploitability")
+    plt.title(f"{env_name[:-2]} {env_name[-2:]}")
+    # sns.set(font_scale=3)
     # fig = ax.get_figure()
-    plt.savefig(save_dir+name+"_sm_"+str(window)+".eps", format="eps")
+    plt.savefig(save_dir+name+"_sm_"+str(window)+"."+save_format, format=save_format)
+    plt.close()
 
 def moving_average(interval, windowsize):
     window = np.ones(int(windowsize)) / float(windowsize)
@@ -118,10 +123,12 @@ pths = ["/home/panpan/rl4co/logs/train_psro/runs/csp20/am-csp20/2024-05-20_03-59
         ]
 window=7
 type="conv"
+save_format = "eps"
 for env_name, log_pth in zip(envs, pths):
     # env_name = "svrp20"  #"csp20" 
     log_pth = log_pth + "/psro/"
     # log_pth = "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12/psro/"
-    draw_jpc(env_name, log_pth)
+    
 
-    plot_nashconv(env_name, log_pth, window, type)
+    plot_nashconv(env_name, log_pth, window, type, save_format)
+    draw_jpc(env_name, log_pth, save_format)
