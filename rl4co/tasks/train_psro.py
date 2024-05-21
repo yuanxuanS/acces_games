@@ -385,6 +385,14 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         print(f"load testdata from {test_data_pth}")
         test_data = env.load_data(test_data_pth)
+        # 抽取一些数据
+        if cfg.env.dataset_flag == "val_sample":
+            sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
+            print("sample : ", sample_lst)
+            test_data = test_data[sample_lst, ...]
+            print("size after sample: ", test_data["locs"].shape)
+        else:
+            sample_lst = None
         # print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
@@ -409,11 +417,11 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             
 
 
-            rewards_rl, reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data, 
+            rewards_rl, reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data, sample_lst,
                     prog_strategy, protagonist_tmp, protagonist_model,
                     adver_strategy, adversary_tmp, adversary_model, stoch_data_dir)
             
-            save_eval_pth = "eval_with"+another+"_"+cfg.env.dataset_flag+"adv.npz"
+            save_eval_pth = "eval_with"+another+"_adv_"+cfg.env.dataset_flag+".npz"
         else:
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
             print("eval without adversary")
@@ -450,6 +458,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         print(f"eval reward: {reward_eval}, var is {eval_var}, time is {time_}")
         adv_pth = cfg.evaluate_adv_dir if cfg.another_adv else None
         np.savez(cfg.ckpt_psro_path+ '/'+save_eval_pth, 
+                    sample_in_val=sample_lst,
                     adv_pth=adv_pth,
                     eval_reward=reward_eval,
                     eval_var=eval_var,

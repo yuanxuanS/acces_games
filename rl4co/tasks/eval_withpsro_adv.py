@@ -109,6 +109,15 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         # load 对应环境的test数据
         test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
         test_data = env.load_data(test_data_pth)
+        # 抽取一些数据
+        if cfg.env.dataset_flag == "val_sample":
+            sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
+            print("sample : ", sample_lst)
+            test_data = test_data[sample_lst, ...]
+            print("size after sample: ", test_data["locs"].shape)
+        else:
+            sample_lst = None
+
         stoch_data_dir = cfg.evaluate_adv_dir+"/adv_stoch_data/"
         stoch_data = {}
         for sk in stochdata_key_mapping[env.name]:
@@ -123,6 +132,20 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             st = time.time()
             length = min(adversary_tmp.policy_number, len(adver_strategy))
             rewards_rl = []
+
+            if not cfg.eval_no_saved_data:
+                loaded = True
+                sdir = stoch_data_dir
+            else:
+                stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+                if not os.path.exists(stoch_save_dir):
+                    os.mkdir(stoch_save_dir)
+                    loaded = False
+                else:
+                    loaded = True
+                    sdir = stoch_save_dir
+
+
             for c in range(length):
                 # with open(cfg.evaluate_adv_dir+"/"+str(c)+"_model_params.txt", "w") as file:
                 #     for k in list(protagonist_model.policy.state_dict()):
@@ -148,25 +171,41 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                 test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
                 if not cfg.eval_no_saved_data:
-                    stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+                    stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
 
-                    stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                    if sample_lst:
+                        data_size = len(sample_lst)
+                    else:
+                        data_size = cfg.model_psro.val_data_size
+                    stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
                     stoch_dataset = TensorDictDataset(stoch_dict)
-                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
                 else:
-                    stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
-                    if not os.path.exists(stoch_save_dir):
-                        os.mkdir(stoch_save_dir)
-                    stoch_dl = test_dl
+                    
+                    if not loaded:  # generate and save new data
+                        stoch_dl = test_dl
+                    else:
+                        print("adv_stoch_data_otherdata already exists")
+                        stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c)
+
+                        stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                        stoch_dataset = TensorDictDataset(stoch_dict)
+                        stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                   
 
                 for batch, stoch_batch in zip(test_dl, stoch_dl):
                     if not cfg.eval_no_saved_data:
                         rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
                                                 protagonist_model, adversary_model, False, "", False,)
                     else:
-                        stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
-                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
-                                                protagonist_model, adversary_model, True, stoch_data_save_pth, False,)
+                        if not loaded:
+                            stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
+                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                    protagonist_model, adversary_model, True, False)
+                        else: 
+                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                                                protagonist_model, adversary_model, False, "", False,)
                     batch_rl_mean, batch_rl_allg = rl_res
                     batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 

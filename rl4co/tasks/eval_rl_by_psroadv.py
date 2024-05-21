@@ -11,12 +11,26 @@ from rl4co.utils.lightning import get_lightning_device
 from tensordict.tensordict import TensorDict
 
 
-def eval_psro(cfg, env, test_data, stoch_data,
+def eval_psro(cfg, env, test_data, stoch_data, sample_lst,
               prog_strategy, protagonist_tmp, protagonist_model,
               adver_strategy, adversary_tmp, adversary_model,
               stoch_data_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     st = time.time()
+
+    loaded = False
+    if not cfg.eval_no_saved_data:      # need save new stoch data of other dataset (no trained )
+        loaded = True
+        sdir = stoch_data_dir
+    else:
+        stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+        if os.path.exists(stoch_save_dir):
+            loaded = True
+            sdir = stoch_save_dir
+        else:
+            loaded = False
+            os.mkdir(stoch_save_dir)
+
     rewards_rl = []
     for r in range(len(prog_strategy)):     # 当error停止，出现policy个数-strategy个数 = 1
         protagonist_model.policy = protagonist_tmp.get_policy_i(r)
@@ -35,27 +49,38 @@ def eval_psro(cfg, env, test_data, stoch_data,
             test_dataset = TensorDictDataset(test_data)
             test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
-            loaded = False
-            if not cfg.eval_no_saved_data:      # need save new stoch data of other dataset (no trained )
-                loaded = True
-                stoch_dict, stoch_data = load_stoch_data(env, stoch_data_dir, stoch_data, c)
+            if not cfg.eval_no_saved_data:
+                stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
 
-                stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
+                if sample_lst:
+                    data_size = len(sample_lst)
+                else:
+                    data_size = cfg.model_psro.val_data_size
+                stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
                 stoch_dataset = TensorDictDataset(stoch_dict)
-                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
             else:
-                stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
-                if os.path.exists(stoch_save_dir):
-                    loaded = True
-                    stoch_dict, stoch_data = load_stoch_data(env, stoch_save_dir, stoch_data, c)
+                if loaded:
+                    stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c)
 
                     stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
                     stoch_dataset = TensorDictDataset(stoch_dict)
                     stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
                 else:
-                    loaded = False
-                    os.mkdir(stoch_save_dir)
-                    stoch_dl = test_dl
+                    if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():     # load saved data
+                        # val_data = update_stoch_data(env, val_data, stoch_data, c)
+                        # read or load stoch data
+                        stoch_data_ = {}
+                        for sk in stochdata_key_mapping[env.name]:
+                            stoch_data_[sk]= stoch_data[sk][c]
+                        stoch_data_ = TensorDict(stoch_data_, batch_size=cfg.model_psro.test_data_size, device=device)     # tensodridct的batch_size必须= 总size， dataloader可以不是
+                        stoch_dataset = TensorDictDataset(stoch_data_)
+                        stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+                        save_stoch_data = False
+                    else:       # 要存数据，且第一次遇到
+                        save_stoch_data = True
+                        stoch_dl = test_dl
 
             for batch, stoch_batch in zip(test_dl, stoch_dl):
                 if loaded:
@@ -64,9 +89,12 @@ def eval_psro(cfg, env, test_data, stoch_data,
                     
                 else:
                     stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"       # to ssave new stoch data
-                    rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
-                                            protagonist_model, adversary_model, True, False,)
-                    
+                    if save_stoch_data:
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                protagonist_model, adversary_model, True, False,)
+                    else:
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                                                protagonist_model, adversary_model, False, False,)
                 batch_rl_mean, batch_rl_allg = rl_res
                 batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -85,7 +113,7 @@ def eval_psro(cfg, env, test_data, stoch_data,
 
             print(f" r-{r} c-{c}", time.time())
 
-            if not loaded:
+            if (not loaded) and save_stoch_data:
                 stochdata_key_lst = stochdata_key_mapping[env.name]
                 for sk in stochdata_key_lst:
                     print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")

@@ -46,7 +46,7 @@ class OPSAEnv(RL4COEnvBase):
         self.prob_scale = 0.0   # attacker攻击的概率范围[prob_scale, 1)
         OPSAEnv.stoch_idx = kwargs.get("stoch_idx")
 
-    def dataset(self, batch_size=[], phase="train", filename=None):
+    def dataset(self, batch_size=[], phase="train", filename=None, **kw):
         """Return a dataset of observations
             in opsa, load data from presaved_data
         """
@@ -56,7 +56,7 @@ class OPSAEnv(RL4COEnvBase):
         elif phase == "val":
             filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"
         elif phase == "test":
-            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_val.npz"   # _test
+            filename = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_test.npz"   # _test
         f = filename
         log.info(f"Loading {phase} dataset from {f}")
         try:
@@ -75,6 +75,10 @@ class OPSAEnv(RL4COEnvBase):
             )
             td = self.generate_data(batch_size)
 
+        if "sample_lst" in kw.keys():
+            if kw["sample_lst"]:
+                td = td[kw["sample_lst"], ...]
+                print("size after sample: ", td["locs"].shape)
         return TensorDictDataset(td)
     
 

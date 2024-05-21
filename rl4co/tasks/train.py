@@ -14,6 +14,7 @@ from rl4co import utils
 from rl4co.utils import RL4COTrainer
 from memory_profiler import profile
 from guppy import hpy
+import random
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -112,10 +113,16 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         elif cfg.get("mode") == "train":
             ckpt_path = trainer.checkpoint_callback.best_model_path
             evaluate_model = trainer.model.load_from_checkpoint(ckpt_path)
-            save_fname = logger[0].save_dir + "/evalu_"+method+".npz"
+            save_fname = logger[0].save_dir + "/evalu_"+method+"_"+cfg.env.dataset_flag+".npz"
         log.info(f" ckpt path: {ckpt_path}")
         
-        dataset = env.dataset(phase="val")     # 使用test的数据集做evaluation
+        if cfg.env.dataset_flag == "val_sample":
+            sample_lst = random.choices(range(dataset["locs"].shape[0]), k=100)
+            print("sample : ", sample_lst)
+        else:
+            sample_lst = None
+
+        dataset = env.dataset(phase="val", sample_lst=sample_lst)     # 使用test的数据集做evaluation
         
         evaluate_policy(env, evaluate_model.policy, dataset, method, save_results=True, save_fname=save_fname)
 

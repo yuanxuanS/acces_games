@@ -71,7 +71,7 @@ def nash_solver(payoff):
         assert equilibrium is not None
         return equilibrium
 
-def load_stoch_data(env, stoch_dir, stoch_data, adv_idx):
+def load_stoch_data(env, stoch_dir, stoch_data, adv_idx, sample_lst=None):
     '''
     从指定路径加载指定adv下的随机变量数据，保存在stoch_data里，并更新data(td)
     stoch_dict: 当下adv_idx的所有随机数据
@@ -82,9 +82,12 @@ def load_stoch_data(env, stoch_dir, stoch_data, adv_idx):
     for sk in stochdata_key_lst:
         stoch_pth = stoch_dir + "adv_"+str(adv_idx) + ".npz"
         stoch_data_ = torch.from_numpy(dict(np.load(stoch_pth))["arr_0"])
-        stoch_dict[sk] = stoch_data_
+        if sample_lst:
+            stoch_dict[sk] = stoch_data_[sample_lst, ...]
+        else:
+            stoch_dict[sk] = stoch_data_
         if stoch_data != None:
-            stoch_data[sk][adv_idx] = stoch_data_
+            stoch_data[sk][adv_idx] = stoch_data_[sample_lst, ...]
     return stoch_dict, stoch_data
 
 def update_stoch_data(env, data, new_stoch_data, adv_idx):
