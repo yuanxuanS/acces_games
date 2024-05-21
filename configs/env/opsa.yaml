@@ -1,12 +1,14 @@
 _target_: rl4co.envs.OPSAEnv
 name: opsa
 
-num_loc: 20
+num_loc: 50
 
 stoch_idx: ${paths.stoch_idx}   # for stoch model params
 data_dir: ${paths.root_dir}/data${paths.stoch_idx}/opsa
-dataset_flag: "val"
+dataset_flag: "test"  #"val_sample"        #"test"
 # train_file: svrp_}${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
 
 val_file: opsa${env.num_loc}_val.npz
 test_file: opsa${env.num_loc}_test.npz
+#opsa${env.num_loc}_val.npz   # (eval用的)
+#opsa${env.num_loc}_test.npz

@@ -11,25 +11,33 @@ from rl4co.utils.lightning import get_lightning_device
 from tensordict.tensordict import TensorDict
 
 
-def eval_psro(cfg, env, test_data, stoch_data, sample_lst,
+def eval_psro(cfg, env, test_data, stoch_data, 
               prog_strategy, protagonist_tmp, protagonist_model,
               adver_strategy, adversary_tmp, adversary_model,
-              stoch_data_dir):
+              ds_from, target_ds_dir, dataset_size, dataset_batch_size):
+    '''
+    dataset_size: 判断是否采样后的
+    '''
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     st = time.time()
 
-    loaded = False
-    if not cfg.eval_no_saved_data:      # need save new stoch data of other dataset (no trained )
-        loaded = True
-        sdir = stoch_data_dir
-    else:
-        stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
-        if os.path.exists(stoch_save_dir):
-            loaded = True
-            sdir = stoch_save_dir
-        else:
-            loaded = False
-            os.mkdir(stoch_save_dir)
+    # loaded = False
+    # if not cfg.eval_no_saved_data:      # need save new stoch data of other dataset (no trained )
+    #     loaded = True
+    #     sdir = stoch_data_dir
+    # else:
+    #     stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
+    #     if os.path.exists(stoch_save_dir):
+    #         loaded = True
+    #         sdir = stoch_save_dir
+    #     else:
+    #         loaded = False
+    #         os.mkdir(stoch_save_dir)
+    if ds_from == "load":
+        pass
+    elif ds_from == "get_and_save":
+        assert not os.path.exists(target_ds_dir), "dataset dir has exists!"
+        os.makedirs(target_ds_dir)
 
     rewards_rl = []
     for r in range(len(prog_strategy)):     # 当error停止，出现policy个数-strategy个数 = 1
@@ -49,52 +57,84 @@ def eval_psro(cfg, env, test_data, stoch_data, sample_lst,
             test_dataset = TensorDictDataset(test_data)
             test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
 
-            if not cfg.eval_no_saved_data:
-                stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
-
-                if sample_lst:
-                    data_size = len(sample_lst)
-                else:
-                    data_size = cfg.model_psro.val_data_size
-                stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
+            if ds_from == "load":
+                stoch_dict, stoch_data = load_stoch_data(env, target_ds_dir, stoch_data, c)
+                stoch_dict = TensorDict(stoch_dict, batch_size=dataset_size, device=device)
                 stoch_dataset = TensorDictDataset(stoch_dict)
-                stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
-            else:
-                if loaded:
-                    stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c)
+                stoch_dl = DataLoader(stoch_dataset, batch_size=dataset_batch_size, collate_fn=tensordict_collate_fn)
+            elif ds_from == "get_and_save":
+                if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():
+                    stoch_data_ = {}
+                    for sk in stochdata_key_mapping[env.name]:
+                        stoch_data_[sk]= stoch_data[sk][c]
 
-                    stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
-                    stoch_dataset = TensorDictDataset(stoch_dict)
-                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
-                else:
-                    if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():     # load saved data
-                        # val_data = update_stoch_data(env, val_data, stoch_data, c)
-                        # read or load stoch data
-                        stoch_data_ = {}
-                        for sk in stochdata_key_mapping[env.name]:
-                            stoch_data_[sk]= stoch_data[sk][c]
-                        stoch_data_ = TensorDict(stoch_data_, batch_size=cfg.model_psro.test_data_size, device=device)     # tensodridct的batch_size必须= 总size， dataloader可以不是
-                        stoch_dataset = TensorDictDataset(stoch_data_)
-                        stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                    stoch_data_ = TensorDict(stoch_data_, batch_size=dataset_size, device=device)     # tensodridct的batch_size必须= 总size， dataloader可以不是
+                    stoch_dataset = TensorDictDataset(stoch_data_)
+                    stoch_dl = DataLoader(stoch_dataset, batch_size=dataset_batch_size, collate_fn=tensordict_collate_fn)
+                    save_stoch_data = False
+                else:       # 在play_game中得到
+                    save_stoch_data = True
+                    stoch_dl = test_dl  
+            # if not cfg.eval_no_saved_data:
+            #     stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
 
-                        save_stoch_data = False
-                    else:       # 要存数据，且第一次遇到
-                        save_stoch_data = True
-                        stoch_dl = test_dl
+            #     if sample_lst:
+            #         data_size = len(sample_lst)
+            #     else:
+            #         data_size = cfg.model_psro.val_data_size
+            #     stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
+            #     stoch_dataset = TensorDictDataset(stoch_dict)
+            #     stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
+            # else:
+            #     if loaded:
+            #         stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
+
+                    
+            #         if sample_lst:
+            #             data_size = len(sample_lst)
+            #         else:
+            #             data_size = cfg.model_psro.val_data_size
+                
+            #         stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
+            #         stoch_dataset = TensorDictDataset(stoch_dict)
+            #         stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+            #     else:
+            #         if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():     # 要存数据，但不是第一次遇到
+            #             # val_data = update_stoch_data(env, val_data, stoch_data, c)
+            #             # read or load stoch data
+            #             stoch_data_ = {}
+            #             for sk in stochdata_key_mapping[env.name]:
+            #                 stoch_data_[sk]= stoch_data[sk][c]
+            #                 data_size = cfg.model_psro.test_data_size
+
+            #             stoch_data_ = TensorDict(stoch_data_, batch_size=data_size, device=device)     # tensodridct的batch_size必须= 总size， dataloader可以不是
+            #             stoch_dataset = TensorDictDataset(stoch_data_)
+            #             stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+
+            #             save_stoch_data = False
+            #         else:       # 要存数据，且第一次遇到
+            #             save_stoch_data = True
+            #             stoch_dl = test_dl
 
             for batch, stoch_batch in zip(test_dl, stoch_dl):
-                if loaded:
+                if ds_from== "load":
                     rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
                                         protagonist_model, adversary_model, False, False,)
                     
-                else:
-                    stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"       # to ssave new stoch data
-                    if save_stoch_data:
-                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
-                                                protagonist_model, adversary_model, True, False,)
-                    else:
-                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                elif ds_from == "get_and_save":
+                    if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c,
                                                 protagonist_model, adversary_model, False, False,)
+                    else:
+                        rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                protagonist_model, adversary_model, True, False, )
+                    # stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"       # to ssave new stoch data
+                    # if save_stoch_data:
+                    #     rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                    #                             protagonist_model, adversary_model, True, False, )
+                    # else:
+                    #     rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
+                    #                             protagonist_model, adversary_model, False, False,)
                 batch_rl_mean, batch_rl_allg = rl_res
                 batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -113,11 +153,39 @@ def eval_psro(cfg, env, test_data, stoch_data, sample_lst,
 
             print(f" r-{r} c-{c}", time.time())
 
-            if (not loaded) and save_stoch_data:
-                stochdata_key_lst = stochdata_key_mapping[env.name]
-                for sk in stochdata_key_lst:
-                    print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")
-                    np.savez(stoch_data_save_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+            if ds_from == "get_and_save":
+                if not save_stoch_data:
+                    pass
+                else:
+                    stoch_save_dir = target_ds_dir + "/" 
+                    stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"       # to ssave new stoch data
+                    stochdata_key_lst = stochdata_key_mapping[env.name]
+                    if len(stochdata_key_lst) > 1:
+                    
+                        for sk in stochdata_key_lst:
+                            s_pth = stoch_data_save_pth[:-4] + "_var_" + sk + ".npz"
+                            print(f"save stoch_data to {s_pth}, {stoch_data[sk][c][0]}")
+
+                            np.savez(s_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+                    else:
+                        for sk in stochdata_key_lst:
+                            print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")
+                            np.savez(stoch_data_save_pth, stoch_data[sk][c].cpu())
+            else:
+                print(f"no data to save")
+            # if (not loaded) and save_stoch_data:
+            #     stochdata_key_lst = stochdata_key_mapping[env.name]
+            #     if len(stochdata_key_lst) > 1:
+                    
+            #         for sk in stochdata_key_lst:
+            #             s_pth = stoch_data_save_pth[:-4] + "_var_" + sk + ".npz"
+            #             print(f"save stoch_data to {s_pth}, {stoch_data[sk][c][0]}")
+
+            #             np.savez(s_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+            #     else:
+            #         for sk in stochdata_key_lst:
+            #             print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")
+            #             np.savez(stoch_data_save_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
 
             rewards_rl.append(rl_rewards_all.cpu().tolist())
     rewards_rl = np.array(rewards_rl)

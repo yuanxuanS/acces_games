@@ -33,7 +33,7 @@ import os
 import time
 from rl4co.model_MA.utils_psro import eval_oneprog_adv, eval_oneprog_adv_allgraph, stochdata_key_mapping, load_stoch_data
 from tensordict.tensordict import TensorDict
-
+from rl4co.utils.dataset_utils import get_stoch_data_of_adv, save_stoch_data_of_adv
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -107,18 +107,57 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         #     print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
-        test_data = env.load_data(test_data_pth)
-        # 抽取一些数据
-        if cfg.env.dataset_flag == "val_sample":
-            sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
-            print("sample : ", sample_lst)
-            test_data = test_data[sample_lst, ...]
-            print("size after sample: ", test_data["locs"].shape)
-        else:
-            sample_lst = None
+        if cfg.env.eval_dataset == "test":
+            test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
+            dataset_size = cfg.model_psro.test_data_size
+            dataset_batch_size = cfg.model_psro.test_batch_size
+        elif cfg.env.eval_dataset == "val":
+            test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
+            dataset_size = cfg.model_psro.val_data_size
+            dataset_batch_size = cfg.model_psro.val_batch_size
 
-        stoch_data_dir = cfg.evaluate_adv_dir+"/adv_stoch_data/"
+        print(f"get eval data from {test_data_pth}")
+        test_data = env.load_data(test_data_pth)
+        # # 抽取一些数据
+        # if cfg.env.dataset_flag == "val_sample" or cfg.env.dataset_flag == "test_sample":
+        #     sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
+        #     # sample_lst = [2379, 5442, 3699, 6039, 6257, 655, 131, 8374, 2593, 2343, 9956, 4702, 8364, 4763, 6390, 1506, 6348, 8680, 5231, 7412, 6714, 640, 7582, 5910, 3012, 310, 8655, 4727, 7188, 8788, 7141, 9210, 3949, 8009, 4446, 9355, 8788, 974, 1359, 2169, 9654, 4361, 6266, 3010, 5072, 3858, 3509, 5850, 5842, 9042, 6819, 9289, 8564, 9909, 6712, 1630, 8606, 9646, 9046, 5691, 7138, 2111, 8316, 5735, 2849, 634, 8539, 9898, 885, 8005, 4104, 1507, 2938, 7687, 8727, 441, 6145, 449, 7184, 3309, 8809, 9806, 5054, 9985, 3096, 769, 5997, 313, 1973, 4079, 6104, 1561, 424, 8677, 3138, 9586, 8966, 3777, 4604, 5200]
+        #     print("sample : ", sample_lst)
+        #     test_data = test_data[sample_lst, ...]
+        #     print("size after sample: ", test_data["locs"].shape)
+        # else:
+        #     sample_lst = None
+        # 是否已有数据集
+        ds_dirs = os.listdir(cfg.evaluate_adv_dir)
+        target_d = "adv_stoch_data_" + cfg.env.dataset_flag 
+        target_ds_dir = cfg.evaluate_adv_dir + "/"+ target_d
+
+        if target_d in ds_dirs:        # 加载数据一定不考虑sample
+            ds_from = "load"
+            if cfg.env.dataset_state == "sample":        # 如果加载的是sample的，此处找到当时的sample lst
+                sample_lst  = dict(np.load(target_ds_dir+".npz"))["sample_lst"]
+                print(f"sample from {sample_lst}")
+                test_data = test_data[sample_lst, ...]
+                dataset_size = 100
+        else:   # 只有存新数据才控制sample
+            ds_from = "get_and_save"    
+            # 抽取一些数据
+            if cfg.env.dataset_state == "sample":
+                sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
+                np.savez(target_ds_dir, sample_lst=sample_lst)
+                print("sample : ", sample_lst)
+                test_data = test_data[sample_lst, ...]
+                print("size after sample: ", test_data["locs"].shape)
+                dataset_size = 100
+            else:
+                sample_lst = None
+
+        if ds_from == "load":
+            pass
+        elif ds_from == "get_and_save":
+            assert not os.path.exists(target_ds_dir), "dataset dir has exists!"
+            os.makedirs(target_ds_dir)
+
         stoch_data = {}
         for sk in stochdata_key_mapping[env.name]:
             stoch_data[sk] = {}
@@ -132,19 +171,6 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
             st = time.time()
             length = min(adversary_tmp.policy_number, len(adver_strategy))
             rewards_rl = []
-
-            if not cfg.eval_no_saved_data:
-                loaded = True
-                sdir = stoch_data_dir
-            else:
-                stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
-                if not os.path.exists(stoch_save_dir):
-                    os.mkdir(stoch_save_dir)
-                    loaded = False
-                else:
-                    loaded = True
-                    sdir = stoch_save_dir
-
 
             for c in range(length):
                 # with open(cfg.evaluate_adv_dir+"/"+str(c)+"_model_params.txt", "w") as file:
@@ -168,44 +194,24 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
 
                 test_data_ = test_data.to(device)
                 test_dataset = TensorDictDataset(test_data_)
-                test_dl = DataLoader(test_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
+                test_dl = DataLoader(test_dataset, batch_size=dataset_batch_size, collate_fn=tensordict_collate_fn)
 
-                if not cfg.eval_no_saved_data:
-                    stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c, sample_lst)
 
-                    if sample_lst:
-                        data_size = len(sample_lst)
-                    else:
-                        data_size = cfg.model_psro.val_data_size
-                    stoch_dict = TensorDict(stoch_dict, batch_size=data_size, device=device)
-                    stoch_dataset = TensorDictDataset(stoch_dict)
-                    stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.val_batch_size, collate_fn=tensordict_collate_fn)
-                else:
-                    
-                    if not loaded:  # generate and save new data
-                        stoch_dl = test_dl
-                    else:
-                        print("adv_stoch_data_otherdata already exists")
-                        stoch_dict, stoch_data = load_stoch_data(env, sdir, stoch_data, c)
-
-                        stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
-                        stoch_dataset = TensorDictDataset(stoch_dict)
-                        stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
-
-                   
+                
+                stoch_dl, save_stoch_data = get_stoch_data_of_adv(stoch_data, ds_from, env, target_ds_dir, c, dataset_size, dataset_batch_size, test_dl)
 
                 for batch, stoch_batch in zip(test_dl, stoch_dl):
-                    if not cfg.eval_no_saved_data:
+                    if ds_from == "load":
                         rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
                                                 protagonist_model, adversary_model, False, "", False,)
-                    else:
-                        if not loaded:
-                            stoch_data_save_pth = stoch_save_dir + "adv_"+str(c) + ".npz"
-                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
-                                                    protagonist_model, adversary_model, True, False)
-                        else: 
+                    elif ds_from == "get_and_save":
+                        if c in stoch_data[stochdata_key_mapping[env.name][0]].keys():
                             rl_res, bl_res, stoch_data = play_game(env, batch.clone(), stoch_batch, stoch_data, c, 
                                                 protagonist_model, adversary_model, False, "", False,)
+                        else:
+                            rl_res, bl_res, stoch_data = play_game(env, batch.clone(), None, stoch_data, c, 
+                                                    protagonist_model, adversary_model, True, False)
+                    
                     batch_rl_mean, batch_rl_allg = rl_res
                     batch_l_mean, batch_bl_var, batch_bl_allg = bl_res
 
@@ -222,24 +228,12 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                     else:
                         bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
                 
-                 # record rewards of rl and baseline ,only under prog 0 
-                
-                # payoff = torch.tensor(rewards).mean().item()
-                # payoff_underadv_rl.append(payoff)
-                # print(f"c :{c}")
-                # # 每张图上的psro-adv下的reward
-                # if rewards_whole_g == None:
-                #     rewards_whole_g = rewards_all[:, None]
-                # else:
-                #     rewards_whole_g = torch.cat((rewards_whole_g, rewards_all[:, None]), dim=1)
+                save_stoch_data_of_adv(ds_from, save_stoch_data, target_ds_dir, env,
+                                       stoch_data, c)
+
                 rewards_rl.append(rl_rewards_all.cpu().tolist())
             rl_rewards_psro = eval_oneprog_adv_allgraph(rewards_rl, adver_strategy)
             rl_mean, rl_var = rl_rewards_psro.mean(), rl_rewards_psro.var()
-
-
-            # reward_eval = eval_oneprog_adv(payoff_underadv_rl, adver_strategy)
-            # rewards_graphs = eval_oneprog_adv_allgraph(rewards_whole_g[:, None].cpu().numpy(), adver_strategy)
-            # eval_var = rewards_graphs.var()
 
             eval_time = time.time() - st
             print(f"reward mean is {rl_mean}, var is {rl_var}, eval time of rl is {eval_time} s")
@@ -259,8 +253,9 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
         payoff_underadv_baseline = []
         if cfg.get("eval_baseline_prog"):
             # 无adver的eval: 写一个payoff表，存每个prog的policy 在test数据下的结果，然后strategy来得到最后结果
-            print("eval baseline with psro-adversary")
+            
             prog_baseline = cfg.baseline_heur
+            print(f"eval {prog_baseline} baseline with psro-adversary")
 
             save_bl_res_pth = cfg.evaluate_adv_dir+ '/baseline_'+prog_baseline
             if not os.path.exists(save_bl_res_pth):
@@ -286,24 +281,11 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                     stoch_dict = {}
                     for sk in stochdata_key_lst:
                         stoch_dict[sk] = stoch_data[sk][adv_idx]
+                    save_stoch_data = False
                 else:
-                    stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata/"
-                    if (not os.path.exists(stoch_save_dir)) and (not cfg.eval_no_saved_data):
-                        os.mkdir(stoch_save_dir)
-                        stoch_dl = test_dl
-                    else:
-                        if cfg.eval_no_saved_data:      # 有”其他数据文件“还要用新的数据
-                            stoch_save_dir = cfg.evaluate_adv_dir+"/adv_stoch_data_otherdata2/"
-                            os.mkdir(stoch_save_dir)
-                            stoch_dl = test_dl
-                            
-                        else:   # 有”其他数据文件“，就用这个
-                            stoch_dict, stoch_data = load_stoch_data(env, stoch_save_dir, stoch_data, adv_idx)
-                            stoch_dict = TensorDict(stoch_dict, batch_size=cfg.model_psro.test_data_size, device=device)
-                            stoch_dataset = TensorDictDataset(stoch_dict)
-                            stoch_dl = DataLoader(stoch_dataset, batch_size=cfg.model_psro.test_batch_size, collate_fn=tensordict_collate_fn)
                         
-
+                    stoch_dl, save_stoch_data = get_stoch_data_of_adv(stoch_data, ds_from, env, target_ds_dir, adv_idx, dataset_size, dataset_batch_size, test_dl)
+                    
                         
                 
 
@@ -326,6 +308,9 @@ def eval_withpsroadv(cfg: DictConfig) -> Tuple[dict, dict]:
                         bl_rewards_all = torch.cat((bl_rewards_all, batch_bl_allg), dim=0)
                 rewards_bl.append(bl_rewards_all.cpu().tolist())
 
+                save_stoch_data_of_adv(ds_from, save_stoch_data, target_ds_dir, env, stoch_data,
+                                       adv_idx,)
+                
             eval_time = time.time()-st 
             bl_rewards_psro = eval_oneprog_adv_allgraph(rewards_bl, support_adv_stra)
             bl_mean, bl_var = bl_rewards_psro.mean(), bl_rewards_psro.var()
