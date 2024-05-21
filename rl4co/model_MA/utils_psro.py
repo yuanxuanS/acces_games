@@ -79,15 +79,29 @@ def load_stoch_data(env, stoch_dir, stoch_data, adv_idx, sample_lst=None):
     '''
     stochdata_key_lst = stochdata_key_mapping[env.name]
     stoch_dict = {}
-    for sk in stochdata_key_lst:
-        stoch_pth = stoch_dir + "adv_"+str(adv_idx) + ".npz"
-        stoch_data_ = torch.from_numpy(dict(np.load(stoch_pth))["arr_0"])
-        if sample_lst:
-            stoch_dict[sk] = stoch_data_[sample_lst, ...]
-        else:
-            stoch_dict[sk] = stoch_data_
-        if stoch_data != None:
-            stoch_data[sk][adv_idx] = stoch_data_[sample_lst, ...]
+    stoch_pth = stoch_dir +"/"+ "adv_"+str(adv_idx) + ".npz"
+    if len(stochdata_key_lst) > 1:
+        for sk in stochdata_key_lst:
+            s_pth = stoch_pth[:-4] + "_var_" + sk + ".npz"
+            
+            stoch_data_ = torch.from_numpy(dict(np.load(s_pth))["arr_0"])
+            if sample_lst:
+                stoch_dict[sk] = stoch_data_[sample_lst, ...]
+            else:
+                stoch_dict[sk] = stoch_data_
+            if stoch_data != None:
+                stoch_data[sk][adv_idx] = stoch_data_[sample_lst, ...]
+            print(f"load stoch_data from {s_pth}, {stoch_data[sk][adv_idx][0][:5]}")
+    else:
+        for sk in stochdata_key_lst:
+            # stoch_pth = stoch_dir + "adv_"+str(adv_idx) + ".npz"
+            stoch_data_ = torch.from_numpy(dict(np.load(stoch_pth))["arr_0"])
+            if sample_lst:
+                stoch_dict[sk] = stoch_data_[sample_lst, ...]
+            else:
+                stoch_dict[sk] = stoch_data_
+            if stoch_data != None:
+                stoch_data[sk][adv_idx] = stoch_data_[sample_lst, ...]
     return stoch_dict, stoch_data
 
 def update_stoch_data(env, data, new_stoch_data, adv_idx):
@@ -209,9 +223,17 @@ def update_payoff(cfg, env, data_pth, stoch_data, save_dir,
             
             stochdata_key_lst = stochdata_key_mapping[env.name]
             if save_stoch_data:
-                for sk in stochdata_key_lst:
-                    np.savez(save_stoch_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
-                print(f"save stoch_data to {save_stoch_pth}, {stoch_data[sk][c][0]}")
+                if len(stochdata_key_lst) > 1:
+                    for sk in stochdata_key_lst:
+                        s_pth = save_stoch_pth[:-4] + "_var_" + sk + ".npz"
+                        print(f"save stoch_data to {s_pth}, {stoch_data[sk][c][0]}")
+
+                        np.savez(s_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+
+                else:
+                    for sk in stochdata_key_lst:
+                        np.savez(save_stoch_pth, stoch_data[sk][c].cpu())       # 自动转化为numpy
+                    print(f"save stoch_data to {save_stoch_pth}, {stoch_data[sk][c][0]}")
             # record rewards of rl and baseline ,only under prog 0 
             if eval_bl and r == 0:
                 rewards_bl.append(bl_rewards_all.cpu().tolist())  
@@ -300,7 +322,7 @@ def eval_oneprog_adv_allgraph(rewards_graph, adv_strategy):
 
 def play_game(env, td_init, stoch_td, stoch_data,  adv_idx, prog, adver=None, 
               new_stoch_data=False,
-              eval_baseline=False, baseline="cw", baseline_result_fn=""):
+              eval_baseline=False, baseline="cw", baseline_result_fn="", **kw):
     '''
         加载batch数据, 返回一次evaluation的reward: prog-adver
         prog: AM model

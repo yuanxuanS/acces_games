@@ -76,7 +76,7 @@ class OPSAEnv(RL4COEnvBase):
             td = self.generate_data(batch_size)
 
         if "sample_lst" in kw.keys():
-            if kw["sample_lst"]:
+            if isinstance(kw["sample_lst"], list):
                 td = td[kw["sample_lst"], ...]
                 print("size after sample: ", td["locs"].shape)
         return TensorDictDataset(td)

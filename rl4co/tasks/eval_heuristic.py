@@ -46,6 +46,12 @@ def evaluate_baseline(
     # env td  data
     f = getattr(env, f"test_file") if dataset_filename is None else dataset_filename
     td_load = env.load_data(f)       # this func normalize to [0-1]
+
+    if "sample_lst" in kwargs.keys():
+        if isinstance(kwargs["sample_lst"], list):
+            td_load = td_load[kwargs["sample_lst"], ...]
+            print("size after sample: ", td_load["locs"].shape)
+
     # reset td, use this data-key-value to process in heuristic func
     td_load = env._reset(td_load) 
        

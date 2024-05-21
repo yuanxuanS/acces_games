@@ -382,17 +382,44 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
         #     print(f"after:prog strate is {prog_strategy}")
 
         # load 对应环境的test数据
-        test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
-        print(f"load testdata from {test_data_pth}")
+        if cfg.env.eval_dataset == "test":
+            test_data_pth = cfg.env.data_dir+"/"+cfg.env.test_file
+            dataset_size = cfg.model_psro.test_data_size
+            dataset_batch_size = cfg.model_psro.test_batch_size
+        elif cfg.env.eval_dataset == "val":
+            test_data_pth = cfg.env.data_dir+"/"+cfg.env.val_file
+            dataset_size = cfg.model_psro.val_data_size
+            dataset_batch_size = cfg.model_psro.val_batch_size
+
+        print(f"get eval data from {test_data_pth}")
         test_data = env.load_data(test_data_pth)
-        # 抽取一些数据
-        if cfg.env.dataset_flag == "val_sample":
-            sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
-            print("sample : ", sample_lst)
-            test_data = test_data[sample_lst, ...]
-            print("size after sample: ", test_data["locs"].shape)
-        else:
+        
+        # 是否已有数据集
+        ds_dirs = os.listdir(cfg.evaluate_prog_dir)
+        target_d = "adv_stoch_data_" + cfg.env.dataset_flag 
+        target_ds_dir = cfg.evaluate_prog_dir + "/"+ target_d      #因为要判断在list中？不能加 "/"
+
+        if target_d in ds_dirs:        # 加载数据一定不考虑sample
+            ds_from = "load"
             sample_lst = None
+            if cfg.env.dataset_state == "sample":
+                sample_lst  = dict(np.load(target_ds_dir+".npz"))["sample_lst"]
+                test_data = test_data[sample_lst, ...]
+                dataset_size = 100
+        else:   # 只有存新数据才控制sample
+            ds_from = "get_and_save"        
+
+            # 抽取一些数据
+            if cfg.env.dataset_state == "sample":
+                sample_lst = random.choices(range(test_data["locs"].shape[0]), k=100)
+                np.savez(target_ds_dir, sample_lst=sample_lst)
+                print("sample : ", sample_lst)
+                test_data = test_data[sample_lst, ...]
+                print("size after sample: ", test_data["locs"].shape)
+                dataset_size = 100
+            else:
+                sample_lst = None
+
         # print(f" test size is {test_data.batch_size}")
         # td_init = env.reset(test_data.clone()).to(device)        # 同样数据会进行多次play game，所以val_data需要保持原样，每次game：td_init重新加载
 
@@ -417,9 +444,9 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
             
 
 
-            rewards_rl, reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data, sample_lst,
+            rewards_rl, reward_eval, eval_var, time_, stoch_data = eval_psro(cfg, env, test_data, stoch_data,
                     prog_strategy, protagonist_tmp, protagonist_model,
-                    adver_strategy, adversary_tmp, adversary_model, stoch_data_dir)
+                    adver_strategy, adversary_tmp, adversary_model, ds_from, target_ds_dir, dataset_size, dataset_batch_size)
             
             save_eval_pth = "eval_with"+another+"_adv_"+cfg.env.dataset_flag+".npz"
         else:

@@ -154,7 +154,7 @@ class RL4COEnvBase(EnvBase):
         """
         raise NotImplementedError
 
-    def dataset(self, batch_size=[], phase="train", filename=None):
+    def dataset(self, batch_size=[], phase="train", filename=None, **kw):
         """Return a dataset of observations
         Generates the dataset if it does not exist, otherwise loads it from file
         """
@@ -188,6 +188,11 @@ class RL4COEnvBase(EnvBase):
                     f"unset {phase}_file to generate data automatically instead"
                 )
                 td = self.generate_data(batch_size)
+                
+        if "sample_lst" in kw.keys():
+            if isinstance(kw["sample_lst"], list):
+                td = td[kw["sample_lst"], ...]
+                print("size after sample: ", td["locs"].shape)
 
         return TensorDictDataset(td)
 
