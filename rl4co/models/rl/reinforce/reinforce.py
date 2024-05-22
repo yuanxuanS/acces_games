@@ -13,7 +13,6 @@ from rl4co.models.rl.common.base import RL4COLitModule
 from rl4co.models.rl.reinforce.baselines import REINFORCEBaseline, get_reinforce_baseline
 from rl4co.utils.lightning import get_lightning_device
 from rl4co.utils.pylogger import get_pylogger
-from memory_profiler import profile
 log = get_pylogger(__name__)
 
 

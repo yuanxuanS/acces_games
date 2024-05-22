@@ -2,7 +2,7 @@
 
 defaults:
   - override /model: am.yaml
-  - override /env: csp.yaml
+  - override /env: acsp.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml
@@ -38,7 +38,7 @@ model:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 200 #3 #
+  max_epochs: 1 #3 #
 
 seed: 1234
 

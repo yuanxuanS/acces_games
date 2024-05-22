@@ -2,7 +2,7 @@
 
 defaults:
   - override /model_adversary: am-ppo.yaml
-  - override /env: opsa.yaml
+  - override /env: acsp.yaml
   - override /callbacks: default.yaml
   - override /trainer: default.yaml
   - override /logger: wandb.yaml
@@ -17,11 +17,7 @@ logger:
     group: ${env.name}${env.num_loc}
     name: ppo-adv-${env.name}${env.num_loc}
     offline: true
-prog_pth: /home/panpan/rl4co/logs/train/runs/opsa50/am-opsa50/2024-05-20_18-03-16/rl4co/k3zk6zju/checkpoints/epoch=199-step=4000.ckpt
-#/home/panpan/rl4co/logs/train/runs/opsa20/am-opsa20/2024-05-20_14-02-31/rl4co/x8nylfz3/checkpoints/epoch=99-step=2000.ckpt
-#/home/panpan/rl4co/logs/train/runs/csp20/am-csp20/2024-05-20_03-41-40/rl4co/v9xuiw1j/checkpoints/epoch=99-step=2000.ckpt
-#logs/train/runs/svrp20/am-svrp20/2024-05-19_20-56-05/rl4co/6bib2wms/checkpoints/epoch=49-step=1000.ckpt
-
+prog_pth:  /home/panpan/acces_games/logs/train/runs/acsp50/am-acsp50/2024-05-22_19-57-54/rl4co/c1b28edi/checkpoints/epoch=0-step=20.ckpt
 model_adversary:
   opponent_type: "rl"
   batch_size: 512
@@ -56,7 +52,7 @@ model:
   test_data_size: ${model_adversary.test_data_size}
 
 trainer:
-  max_epochs: 200
+  max_epochs: 1
   gradient_clip_val: Null # not supported in manual optimization
   precision: "32-true" # NOTE: this seems to be important during manual optimization
 

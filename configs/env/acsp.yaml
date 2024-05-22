@@ -1,0 +1,22 @@
+_target_: rl4co.envs.ACSPEnv
+name: acsp
+
+num_loc: 50
+min_cover: 0.
+max_cover: 0.25
+
+stoch_idx: ${paths.stoch_idx}   # for stoch model params
+data_dir: ${paths.root_dir}/data${paths.stoch_idx}/acsp
+
+# 在哪个数据集上eval
+eval_dataset: "val" # "val"    
+# 是否对该数据集进行sample
+dataset_state: "sample" # "no_sample"
+dataset_flag: ${env.eval_dataset}_${env.dataset_state}  #"val_sample"        #"test"   # "val"
+
+
+train_file: acsp${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+val_file: acsp${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+test_file: acsp${env.num_loc}_test_seed1234_size${model.test_data_size}.npz
+#csp${env.num_loc}_val_seed4321_size${model.val_data_size}.npz
+#csp${env.num_loc}_test_seed1234_size${model.test_data_size}.npz

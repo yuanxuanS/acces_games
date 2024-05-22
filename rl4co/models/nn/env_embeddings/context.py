@@ -15,24 +15,10 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": TSPContext,
-        "opswtw": OPSWTWContext,
-        "opsptw": OPSPTWContext,
-        "opsa": OPSAContext,
-        "atsp": TSPContext,
-        "csp": TSPContext,
-        "scp": SCPContext,
+        "pg": pgContext,
+        "acsp": TSPContext,
         "cvrp": VRPContext,
-        "svrp": SVRPContext,
-        "svrp_fix": SVRPContext,
-        "sdvrp": VRPContext,
-        "pctsp": PCTSPContext,
-        "spctsp": PCTSPContext,
-        "op": OPContext,
-        "dpp": DPPContext,
-        "mdpp": DPPContext,
-        "pdp": PDPContext,
-        "mtsp": MTSPContext,
-        "smtwtp": SMTWTPContext,
+        "acvrp": ACVRPContext,
     }
 
     if env_name not in embedding_registry:
@@ -73,8 +59,8 @@ class EnvContext(nn.Module):
         context_embedding = torch.cat([cur_node_embedding, state_embedding], -1)
         return self.project_context(context_embedding)
 
-class OPSWTWContext(EnvContext):
-    """Context embedding for the opswtw.
+class pgContext(EnvContext):
+    """Context embedding for the pg.
     Project the following to the embedding space:
         - first node embedding: depot
         - current node embedding
@@ -82,59 +68,7 @@ class OPSWTWContext(EnvContext):
     """
 
     def __init__(self, embedding_dim):
-        super(OPSWTWContext, self).__init__(embedding_dim, 2 * embedding_dim + 1)
-        # self.W_placeholder = nn.Parameter(
-        #     torch.Tensor(2 * self.embedding_dim).uniform_(-1, 1)
-        # )
-
-    def _cur_tourtime_embedding(self, embeddings, td):
-        """Get embedding of current tour time"""
-        return td["tour_time"]
-    def forward(self, embeddings, td):
-        batch_size = [td.batch_size[0]]
-        depot_idx = torch.ones((*batch_size, ), dtype=torch.int64).to(embeddings.device)
-        depot_embedding = gather_by_index(embeddings, depot_idx)
-        cur_node_embedding = self._cur_node_embedding(embeddings, td)
-        tourtime_embedding = self._cur_tourtime_embedding(embeddings, td)
-        context_embedding = torch.cat([depot_embedding, cur_node_embedding, tourtime_embedding[..., None]], -1)
-        return self.project_context(context_embedding)
-
-class OPSPTWContext(EnvContext):
-    """Context embedding for the opsptw.
-    Project the following to the embedding space:
-        - first node embedding: depot
-        - current node embedding
-        - current time
-    """
-
-    def __init__(self, embedding_dim):
-        super(OPSPTWContext, self).__init__(embedding_dim, 2 * embedding_dim + 1)
-        # self.W_placeholder = nn.Parameter(
-        #     torch.Tensor(2 * self.embedding_dim).uniform_(-1, 1)
-        # )
-
-    def _cur_tourtime_embedding(self, embeddings, td):
-        """Get embedding of current tour time"""
-        return td["tour_time"]
-    def forward(self, embeddings, td):
-        batch_size = [td.batch_size[0]]
-        depot_idx = torch.ones((*batch_size, ), dtype=torch.int64).to(embeddings.device)
-        depot_embedding = gather_by_index(embeddings, depot_idx)
-        cur_node_embedding = self._cur_node_embedding(embeddings, td)
-        tourtime_embedding = self._cur_tourtime_embedding(embeddings, td)
-        context_embedding = torch.cat([depot_embedding, cur_node_embedding, tourtime_embedding[..., None]], -1)
-        return self.project_context(context_embedding)
-
-class OPSAContext(EnvContext):
-    """Context embedding for the opsa.
-    Project the following to the embedding space:
-        - first node embedding: depot
-        - current node embedding
-        - current time
-    """
-
-    def __init__(self, embedding_dim):
-        super(OPSAContext, self).__init__(embedding_dim, 2 * embedding_dim + 1)
+        super(pgContext, self).__init__(embedding_dim, 2 * embedding_dim + 1)
         # self.W_placeholder = nn.Parameter(
         #     torch.Tensor(2 * self.embedding_dim).uniform_(-1, 1)
         # )
@@ -183,22 +117,6 @@ class TSPContext(EnvContext):
             ).view(batch_size, *node_dim)
         return self.project_context(context_embedding)
 
-class SCPContext(EnvContext):
-    """Context embedding for the Traveling Salesman Problem (TSP).
-    Project the following to the embedding space:
-        - first node embedding
-        - current node embedding
-        - current reward: cost of selected node in set
-    """
-
-    def __init__(self, embedding_dim):
-        super(SCPContext, self).__init__(embedding_dim, embedding_dim + 1)
-
-    def _state_embedding(self, embeddings, td):
-        state_embedding = td["reward"]
-        return state_embedding
-    
-    
 class VRPContext(EnvContext):
     """Context embedding for the Capacitated Vehicle Routing Problem (CVRP).
     Project the following to the embedding space:
@@ -213,7 +131,7 @@ class VRPContext(EnvContext):
         state_embedding = td["vehicle_capacity"] - td["used_capacity"]
         return state_embedding
 
-class SVRPContext(EnvContext):
+class ACVRPContext(EnvContext):
     """Context embedding for the Stochastic Vehicle Routing Problem (SVRP).
     Project the following to the embedding space:
         - current node embedding
@@ -222,7 +140,7 @@ class SVRPContext(EnvContext):
     """
 
     def __init__(self, embedding_dim):
-        super(SVRPContext, self).__init__(embedding_dim, embedding_dim + 1)
+        super(ACVRPContext, self).__init__(embedding_dim, embedding_dim + 1)
     
     def _state_embedding(self, embeddings, td):
         
@@ -240,121 +158,3 @@ class SVRPContext(EnvContext):
         state_embedding = remain_capacity_embedding
         return state_embedding
 
-class PCTSPContext(EnvContext):
-    """Context embedding for the Prize Collecting TSP (PCTSP).
-    Project the following to the embedding space:
-        - current node embedding
-        - remaining prize (prize_required - cur_total_prize)
-    """
-
-    def __init__(self, embedding_dim):
-        super(PCTSPContext, self).__init__(embedding_dim, embedding_dim + 1)
-
-    def _state_embedding(self, embeddings, td):
-        state_embedding = torch.clamp(
-            td["prize_required"] - td["cur_total_prize"], min=0
-        )[..., None]
-        return state_embedding
-
-
-class OPContext(EnvContext):
-    """Context embedding for the Orienteering Problem (OP).
-    Project the following to the embedding space:
-        - current node embedding
-        - remaining distance (max_length - tour_length)
-    """
-
-    def __init__(self, embedding_dim):
-        super(OPContext, self).__init__(embedding_dim, embedding_dim + 1)
-
-    def _state_embedding(self, embeddings, td):
-        state_embedding = td["max_length"][..., 0] - td["tour_length"]
-        return state_embedding[..., None]
-
-
-class DPPContext(EnvContext):
-    """Context embedding for the Decap Placement Problem (DPP), EDA (electronic design automation).
-    Project the following to the embedding space:
-        - current cell embedding
-    """
-
-    def __init__(self, embedding_dim):
-        super(DPPContext, self).__init__(embedding_dim)
-
-    def forward(self, embeddings, td):
-        """Context cannot be defined by a single node embedding for DPP, hence 0.
-        We modify the dynamic embedding instead to capture placed items
-        """
-        return embeddings.new_zeros(embeddings.size(0), self.embedding_dim)
-
-
-class PDPContext(EnvContext):
-    """Context embedding for the Pickup and Delivery Problem (PDP).
-    Project the following to the embedding space:
-        - current node embedding
-    """
-
-    def __init__(self, embedding_dim):
-        super(PDPContext, self).__init__(embedding_dim, embedding_dim)
-
-    def forward(self, embeddings, td):
-        cur_node_embedding = self._cur_node_embedding(embeddings, td).squeeze()
-        return self.project_context(cur_node_embedding)
-
-
-class MTSPContext(EnvContext):
-    """Context embedding for the Multiple Traveling Salesman Problem (mTSP).
-    Project the following to the embedding space:
-        - current node embedding
-        - remaining_agents
-        - current_length
-        - max_subtour_length
-        - distance_from_depot
-    """
-
-    def __init__(self, embedding_dim, linear_bias=False):
-        super(MTSPContext, self).__init__(embedding_dim, 2 * embedding_dim)
-        proj_in_dim = (
-            4  # remaining_agents, current_length, max_subtour_length, distance_from_depot
-        )
-        self.proj_dynamic_feats = nn.Linear(proj_in_dim, embedding_dim, bias=linear_bias)
-
-    def _cur_node_embedding(self, embeddings, td):
-        cur_node_embedding = gather_by_index(embeddings, td["current_node"])
-        return cur_node_embedding.squeeze()
-
-    def _state_embedding(self, embeddings, td):
-        dynamic_feats = torch.stack(
-            [
-                (td["num_agents"] - td["agent_idx"]).float(),
-                td["current_length"],
-                td["max_subtour_length"],
-                self._distance_from_depot(td),
-            ],
-            dim=-1,
-        )
-        return self.proj_dynamic_feats(dynamic_feats)
-
-    def _distance_from_depot(self, td):
-        # Euclidean distance from the depot (loc[..., 0, :])
-        cur_loc = gather_by_index(td["locs"], td["current_node"])
-        return torch.norm(cur_loc - td["locs"][..., 0, :], dim=-1)
-
-
-class SMTWTPContext(EnvContext):
-    """Context embedding for the Single Machine Total Weighted Tardiness Problem (SMTWTP).
-    Project the following to the embedding space:
-        - current node embedding
-        - current time
-    """
-
-    def __init__(self, embedding_dim):
-        super(SMTWTPContext, self).__init__(embedding_dim, embedding_dim + 1)
-
-    def _cur_node_embedding(self, embeddings, td):
-        cur_node_embedding = gather_by_index(embeddings, td["current_job"])
-        return cur_node_embedding
-
-    def _state_embedding(self, embeddings, td):
-        state_embedding = td["current_time"]
-        return state_embedding

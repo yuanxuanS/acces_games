@@ -16,20 +16,10 @@ def env_dynamic_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": StaticEmbedding,
-        "csp": CSPDynamicEmbedding,
-        "scp": CSPDynamicEmbedding,
-        "atsp": StaticEmbedding,
+        "acsp": ACSPDynamicEmbedding,
         "cvrp": StaticEmbedding,
-        "svrp": StaticEmbedding,
-        "sdvrp": SDVRPDynamicEmbedding,
-        "pctsp": StaticEmbedding,
-        "spctsp": StaticEmbedding,
-        "op": StaticEmbedding,
-        "dpp": StaticEmbedding,
-        "mdpp": StaticEmbedding,
-        "pdp": StaticEmbedding,
-        "mtsp": StaticEmbedding,
-        "smtwtp": StaticEmbedding,
+        "acvrp": StaticEmbedding,
+        "pg": StaticEmbedding,
     }
 
     if env_name not in embedding_registry:
@@ -52,28 +42,8 @@ class StaticEmbedding(nn.Module):
         return 0, 0, 0
 
 
-class SDVRPDynamicEmbedding(nn.Module):
-    """Dynamic embedding for the Split Delivery Vehicle Routing Problem (SDVRP).
-    Embed the following node features to the embedding space:
-        - demand_with_depot: demand of the customers and the depot
-    The demand with depot is used to modify the query, key and value vectors of the attention mechanism
-    based on the current state of the environment (which is changing during the rollout).
-    """
 
-    def __init__(self, embedding_dim, linear_bias=False):
-        super(SDVRPDynamicEmbedding, self).__init__()
-        self.projection = nn.Linear(1, 3 * embedding_dim, bias=linear_bias)
-
-    def forward(self, td):
-        demands_with_depot = td["demand_with_depot"][..., None].clone()
-        demands_with_depot[..., 0, :] = 0
-        glimpse_key_dynamic, glimpse_val_dynamic, logit_key_dynamic = self.projection(
-            demands_with_depot
-        ).chunk(3, dim=-1)
-        return glimpse_key_dynamic, glimpse_val_dynamic, logit_key_dynamic
-
-
-class CSPDynamicEmbedding(nn.Module):
+class ACSPDynamicEmbedding(nn.Module):
     """Dynamic embedding for the Covering Salesman Problems and Set Covering Problems.
     Embed the following node features to the embedding space:
         - guidence_vec: guidence value of the customers, just add dynamic on
@@ -82,7 +52,7 @@ class CSPDynamicEmbedding(nn.Module):
     """
 
     def __init__(self, embedding_dim, linear_bias=True):
-        super(CSPDynamicEmbedding, self).__init__()
+        super(ACSPDynamicEmbedding, self).__init__()
         self.proj_guidence = nn.Linear(1, 3 * embedding_dim, linear_bias, dtype=torch.float32)
 
     def forward(self, td):

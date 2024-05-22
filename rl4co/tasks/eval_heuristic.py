@@ -4,8 +4,8 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, \
-                LocalSearch1_csp, LocalSearch2_csp, LocalSearch_opsa, Greedy_opsa
+from rl4co.heuristic import CW_acvrp, TabuSearch_acvrp, Random_acvrp, \
+                LocalSearch1_acsp, LocalSearch2_acsp, Greedy_pg, Greedy_pg
 
 def check_unused_kwargs(class_, kwargs):
     if len(kwargs) > 0 and not (len(kwargs) == 1 and "progress" in kwargs):
@@ -24,20 +24,20 @@ def evaluate_baseline(
     num_loc = getattr(env, "num_loc", None)
 
     baselines_mapping = {
-        "svrp": {
-            "cw": {"func": CW_svrp, "kwargs": {}},
+        "acvrp": {
+            "cw": {"func": CW_acvrp, "kwargs": {}},
             "tabu": {
-                "func": TabuSearch_svrp, "kwargs": {}},
+                "func": TabuSearch_acvrp, "kwargs": {}},
             "random": {
-                "func": Random_svrp, "kwargs": {}
+                "func": Random_acvrp, "kwargs": {}
             },},
-        "csp": {
-            "LS1": {"func": LocalSearch1_csp, "kwargs": {}},
-            "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
+        "acsp": {
+            "LS1": {"func": LocalSearch1_acsp, "kwargs": {}},
+            "LS2": {"func": LocalSearch2_acsp, "kwargs": {}},
         },
-        "opsa": {
-            "LS":  {"func": LocalSearch_opsa, "kwargs": {}},
-            "greedy_op": {"func": Greedy_opsa, "kwargs": {}},
+        "pg": {
+            "LS":  {"func": Greedy_pg, "kwargs": {}},
+            "greedy_op": {"func": Greedy_pg, "kwargs": {}},
         }
         
     }
@@ -92,18 +92,18 @@ def evaluate_baseline_withpsroadv(
 
     baselines_mapping = {
         "svrp": {
-            "cw": {"func": CW_svrp, "kwargs": {}},
+            "cw": {"func": CW_acvrp, "kwargs": {}},
             "tabu": {
-                "func": TabuSearch_svrp, "kwargs": {}},
+                "func": TabuSearch_acvrp, "kwargs": {}},
             "random": {
-                "func": Random_svrp, "kwargs": {}
+                "func": Random_acvrp, "kwargs": {}
             },},
         "csp": {
-            "LS1": {"func": LocalSearch1_csp, "kwargs": {}},
-            "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
+            "LS1": {"func": LocalSearch1_acsp, "kwargs": {}},
+            "LS2": {"func": LocalSearch2_acsp, "kwargs": {}},
         },
-        "opsa": {
-            "LS":  {"func": LocalSearch_opsa, "kwargs": {}},
+        "pg": {
+            "LS":  {"func": Greedy_pg, "kwargs": {}},
         }
         
     }

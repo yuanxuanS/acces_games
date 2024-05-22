@@ -1,0 +1,18 @@
+_target_: rl4co.envs.PGEnv
+name: pg
+
+num_loc: 50
+
+stoch_idx: ${paths.stoch_idx}   # for stoch model params
+data_dir: ${paths.root_dir}/data${paths.stoch_idx}/pg
+
+# 在哪个数据集上eval
+eval_dataset: "test" # "val"    
+# 是否对该数据集进行sample
+dataset_state: "no_sample" # "no_sample"
+dataset_flag: ${env.eval_dataset}_${env.dataset_state}  #"val_sample"        #"test"   # "val"
+
+val_file: pg${env.num_loc}_val.npz
+test_file: pg${env.num_loc}_test.npz
+#pg${env.num_loc}_val.npz   # (eval用的)
+#pg${env.num_loc}_test.npz

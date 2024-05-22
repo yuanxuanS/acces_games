@@ -7,22 +7,15 @@ import numpy as np
 
 from rl4co.data.utils import check_extension
 from rl4co.utils.pylogger import get_pylogger
-from memory_profiler import profile
 import gc
 log = get_pylogger(__name__)
 
 
 DISTRIBUTIONS_PER_PROBLEM = {
-    "tsp": [None],
-    "csp": [None],
-    "scp": [None],
+    "acsp": [None],
     "vrp": [None],
-    "svrp": ["modelize", "uniform", "no_stoch"],
-    "svrp_fix": ["modelize", "uniform"],
-    "pctsp": [None],
-    "op": ["const", "unif", "dist"],
-    "mdpp": [None],
-    "pdp": [None],
+    "acvrp": ["modelize", "uniform", "no_stoch"],
+    "pg": ["const", "unif", "dist"],
 }
 
 from rl4co.envs.routing.env_utils import STOCH_PARAMS
@@ -42,7 +35,7 @@ def generate_env_data(env_type, *args, **kwargs):
         raise NotImplementedError(f"Environment type {env_type} not implemented")
 
 
-def generate_csp_data(dataset_size, csp_size):
+def generate_acsp_data(dataset_size, csp_size):
     cover_low = 0.
     cover_high = 0.25
     locs = np.random.uniform(size=(dataset_size, csp_size, 2)).astype(np.float32)
@@ -68,11 +61,6 @@ def generate_tsp_data(dataset_size, tsp_size):
         "locs": np.random.uniform(size=(dataset_size, tsp_size, 2)).astype(np.float32)
     }
 
-def generate_scp_data(dataset_size, scp_size):
-    return {
-        "locs": np.random.uniform(size=(dataset_size, scp_size, 2)).astype(np.float32),
-        "costs": np.random.uniform(1, 10,size=(dataset_size, scp_size)).astype(np.float32)
-    }
     
 def generate_vrp_data(dataset_size, vrp_size, capacities=None):
     # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
@@ -113,7 +101,7 @@ def generate_vrp_data(dataset_size, vrp_size, capacities=None):
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
 # @profile(stream=open('logmem_generate_svrp_data.log', 'w+'))
-def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
+def generate_acvrp_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
     # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
     CAPACITIES = {
         10: 20.0,
@@ -176,46 +164,7 @@ def generate_svrp_data(dataset_size, vrp_size, generate_type="modelize", capacit
         "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
     }  # Capacity, same for whole dataset
 
-def generate_svrp_fix_data(dataset_size, vrp_size, generate_type="modelize", capacities=None):
-    # From Kool et al. 2019, Hottung et al. 2022, Kim et al. 2023
-    CAPACITIES = {
-        10: 20.0,
-        15: 25.0,
-        20: 30.0,
-        30: 33.0,
-        40: 37.0,
-        50: 40.0,
-        60: 43.0,
-        75: 45.0,
-        100: 50.0,
-        125: 55.0,
-        150: 60.0,
-        200: 70.0,
-        500: 100.0,
-        1000: 150.0,
-    }
 
-    # If capacities are provided, replace keys in CAPACITIES with provided values if they exist
-    if capacities is not None:
-        for k, v in capacities.items():
-            if k in CAPACITIES:
-                print(f"Replacing capacity for {k} with {v}")
-                CAPACITIES[k] = v
-    
-    
-    
-    weather = np.random.uniform(low=-1., high=1., size=(dataset_size, 3)).astype(
-            np.float32
-        )  # Weather, uniform float (-1, 1)
-    
-
-    return {
-
-        "weather": weather,
-        "capacity": np.full(dataset_size, CAPACITIES[vrp_size]).astype(np.float32),
-    }  # Capacity, same for whole dataset
-    
-# @profile(stream=open('logmem_get_stoch_var_gendata_rewrite.log', 'w+'))
 def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     A, B, G = STOCH_PARAMS[STOCH_IDX]   # 和env的stoch_idx一致
     print(f"ABG in generate data is {A} {B} {G}")
@@ -277,16 +226,9 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
         
     return out
 
-def generate_pdp_data(dataset_size, pdp_size):
-    depot = np.random.uniform(size=(dataset_size, 2))
-    loc = np.random.uniform(size=(dataset_size, pdp_size, 2))
-    return {
-        "locs": loc.astype(np.float32),
-        "depot": depot.astype(np.float32),
-    }
 
 
-def generate_op_data(dataset_size, op_size, prize_type="const", max_lengths=None):
+def generate_pg_data(dataset_size, op_size, prize_type="const", max_lengths=None):
     depot = np.random.uniform(size=(dataset_size, 2))
     loc = np.random.uniform(size=(dataset_size, op_size, 2))
 
@@ -315,98 +257,6 @@ def generate_op_data(dataset_size, op_size, prize_type="const", max_lengths=None
     }
 
 
-def generate_pctsp_data(dataset_size, pctsp_size, penalty_factor=3, max_lengths=None):
-    depot = np.random.uniform(size=(dataset_size, 2))
-    loc = np.random.uniform(size=(dataset_size, pctsp_size, 2))
-
-    # For the penalty to make sense it should be not too large (in which case all nodes will be visited) nor too small
-    # so we want the objective term to be approximately equal to the length of the tour, which we estimate with half
-    # of the nodes by half of the tour length (which is very rough but similar to op)
-    # This means that the sum of penalties for all nodes will be approximately equal to the tour length (on average)
-    # The expected total (uniform) penalty of half of the nodes (since approx half will be visited by the constraint)
-    # is (n / 2) / 2 = n / 4 so divide by this means multiply by 4 / n,
-    # However instead of 4 we use penalty_factor (3 works well) so we can make them larger or smaller
-    MAX_LENGTHS = {20: 2.0, 50: 3.0, 100: 4.0}
-    max_lengths = MAX_LENGTHS if max_lengths is None else max_lengths
-    penalty_max = max_lengths[pctsp_size] * (penalty_factor) / float(pctsp_size)
-    penalty = np.random.uniform(size=(dataset_size, pctsp_size)) * penalty_max
-
-    # Take uniform prizes
-    # Now expectation is 0.5 so expected total prize is n / 2, we want to force to visit approximately half of the nodes
-    # so the constraint will be that total prize >= (n / 2) / 2 = n / 4
-    # equivalently, we divide all prizes by n / 4 and the total prize should be >= 1
-    deterministic_prize = (
-        np.random.uniform(size=(dataset_size, pctsp_size)) * 4 / float(pctsp_size)
-    )
-
-    # In the deterministic setting, the stochastic_prize is not used and the deterministic prize is known
-    # In the stochastic setting, the deterministic prize is the expected prize and is known up front but the
-    # stochastic prize is only revealed once the node is visited
-    # Stochastic prize is between (0, 2 * expected_prize) such that E(stochastic prize) = E(deterministic_prize)
-    stochastic_prize = (
-        np.random.uniform(size=(dataset_size, pctsp_size)) * deterministic_prize * 2
-    )
-
-    return {
-        "locs": loc.astype(np.float32),
-        "depot": depot.astype(np.float32),
-        "penalty": penalty.astype(np.float32),
-        "deterministic_prize": deterministic_prize.astype(np.float32),
-        "stochastic_prize": stochastic_prize.astype(np.float32),
-    }
-
-
-def generate_mdpp_data(
-    dataset_size,
-    size=10,
-    num_probes_min=2,
-    num_probes_max=5,
-    num_keepout_min=1,
-    num_keepout_max=50,
-    lock_size=True,
-):
-    """Generate data for the nDPP problem.
-    If `lock_size` is True, then the size if fixed and we skip the `size` argument if it is not 10.
-    This is because the RL environment is based on a real-world PCB (parametrized with data)
-    """
-    if lock_size and size != 10:
-        # log.info("Locking size to 10, skipping generate_mdpp_data with size {}".format(size))
-        return None
-
-    bs = dataset_size  # bs = batch_size to generate data in batch
-    m = n = size
-    if isinstance(bs, int):
-        bs = [bs]
-
-    locs = np.stack(np.meshgrid(np.arange(m), np.arange(n)), axis=-1).reshape(-1, 2)
-    locs = locs / np.array([m, n], dtype=np.float32)
-    locs = np.expand_dims(locs, axis=0)
-    locs = np.repeat(locs, bs[0], axis=0)
-
-    available = np.ones((bs[0], m * n), dtype=bool)
-
-    probe = np.random.randint(0, high=m * n, size=(bs[0], 1))
-    np.put_along_axis(available, probe, False, axis=1)
-
-    num_probe = np.random.randint(num_probes_min, num_probes_max + 1, size=(bs[0], 1))
-    probes = np.zeros((bs[0], m * n), dtype=bool)
-    for i in range(bs[0]):
-        p = np.random.choice(m * n, num_probe[i], replace=False)
-        np.put_along_axis(available[i], p, False, axis=0)
-        np.put_along_axis(probes[i], p, True, axis=0)
-
-    num_keepout = np.random.randint(num_keepout_min, num_keepout_max + 1, size=(bs[0], 1))
-    for i in range(bs[0]):
-        k = np.random.choice(m * n, num_keepout[i], replace=False)
-        np.put_along_axis(available[i], k, False, axis=0)
-
-    return {
-        "locs": locs.astype(np.float32),
-        "probe": probes.astype(bool),
-        "action_mask": available.astype(bool),
-    }
-
-# @profile(stream=open('log_mem3_shared_step_trainuniform.log', 'w+'))
 def generate_dataset(
     filename=None,
     data_dir="data",
@@ -495,14 +345,6 @@ def generate_default_datasets(data_dir, data_cfg):
     # 平时使用不传入大小的
     # generate_dataset(data_dir=data_dir, name="val", problem="all", seed=4321)
     # generate_dataset(data_dir=data_dir, name="test", problem="all", seed=1234)
-    generate_dataset(
-        data_dir=data_dir,
-        name="test",
-        problem="mdpp",
-        seed=1234,
-        graph_sizes=[10],
-        dataset_size=100,
-    )  # EDA (mDPP)
 
 
 if __name__ == "__main__":

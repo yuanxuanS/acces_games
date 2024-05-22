@@ -12,8 +12,6 @@ from omegaconf import DictConfig
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
-from memory_profiler import profile
-from guppy import hpy
 from rl4co.utils.lightning import get_lightning_device
 
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)

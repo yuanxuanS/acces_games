@@ -9,7 +9,6 @@ from lightning.pytorch.core.datamodule import LightningDataModule
 from lightning.pytorch.loggers import Logger
 from lightning.pytorch.strategies import DDPStrategy, Strategy
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-from memory_profiler import profile
 from rl4co import utils
 
 log = utils.get_pylogger(__name__)

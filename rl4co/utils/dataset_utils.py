@@ -1,4 +1,4 @@
-from rl4co.model_MA.utils_psro import load_stoch_data, stochdata_key_mapping
+from rl4co.model_ccdo.utils_ccdo import load_stoch_data, stochdata_key_mapping
 from tensordict.tensordict import TensorDict
 from rl4co.data.dataset import TensorDictDataset
 from torch.utils.data import DataLoader
@@ -49,5 +49,5 @@ def save_stoch_data_of_adv(ds_from, save_stoch_data, target_ds_dir, env,
                     np.savez(s_pth, stoch_data[sk][adv_idx].cpu())       # 自动转化为numpy
             else:
                 for sk in stochdata_key_lst:
-                    print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][c][0]}")
+                    print(f"save stoch_data to {stoch_data_save_pth}, {stoch_data[sk][adv_idx][0]}")
                     np.savez(stoch_data_save_pth, stoch_data[sk][adv_idx].cpu())

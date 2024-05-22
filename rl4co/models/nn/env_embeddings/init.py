@@ -13,24 +13,10 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
     """
     embedding_registry = {
         "tsp": TSPInitEmbedding,
-        "opswtw": OPSWTWInitEmbedding,
-        "opsptw": OPSPTWInitEmbedding,
-        "opsa": OPSAInitEmbedding,
-        "csp": CSPInitEmbedding,
-        "scp": SCPInitEmbedding,
-        "atsp": TSPInitEmbedding,
+        "pg": pgInitEmbedding,
+        "acsp": ACSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
-        "svrp": SVRPInitEmbedding,
-        "svrp_fix": SVRPInitEmbedding,
-        "sdvrp": VRPInitEmbedding,
-        "pctsp": PCTSPInitEmbedding,
-        "spctsp": PCTSPInitEmbedding,
-        "op": OPInitEmbedding,
-        "dpp": DPPInitEmbedding,
-        "mdpp": MDPPInitEmbedding,
-        "pdp": PDPInitEmbedding,
-        "mtsp": MTSPInitEmbedding,
-        "smtwtp": SMTWTPInitEmbedding,
+        "acvrp": ACVRPInitEmbedding,
     }
 
     if env_name not in embedding_registry:
@@ -57,7 +43,7 @@ class TSPInitEmbedding(nn.Module):
         return out
 
 
-class CSPInitEmbedding(nn.Module):
+class ACSPInitEmbedding(nn.Module):
     """Initial embedding for the Covering Salesman Problems (CSP).
     Embed the following node features to the embedding space:
         - locs: x, y coordinates of the cities
@@ -66,7 +52,7 @@ class CSPInitEmbedding(nn.Module):
     """
 
     def __init__(self, embedding_dim, linear_bias=True):
-        super(CSPInitEmbedding, self).__init__()
+        super(ACSPInitEmbedding, self).__init__()
         node_dim = 3  # x, y,max_cover
         weather_dim = 3     # 
         self.init_embed = nn.Linear(node_dim+weather_dim, embedding_dim, linear_bias)
@@ -82,8 +68,9 @@ class CSPInitEmbedding(nn.Module):
         return out
     
 
-class OPSWTWInitEmbedding(nn.Module):
-    """Initial embedding for the OPSWTW 
+
+class pgInitEmbedding(nn.Module):
+    """Initial embedding for the pg
     Embed the following node features to the embedding space:
         - locs: x, y coordinates of the cities
         - prize:
@@ -91,62 +78,7 @@ class OPSWTWInitEmbedding(nn.Module):
     """
 
     def __init__(self, embedding_dim, linear_bias=True):
-        super(OPSWTWInitEmbedding, self).__init__()
-        node_dim = 9  # x, y, prize, tw_low, tw_high, width,  maxtime, prize/width, prize/todepot
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        prize = td["prize"][..., None]
-        tw_low = td["tw_low"][..., None]
-        tw_high = td["tw_high"][..., None]
-        width = tw_high - tw_low
-        batch_size = td["prize"].shape[0]
-        prize_dis_depot = td["adj"][range(batch_size), :, 0][..., None]
-        feature = torch.concat([td["locs"], prize, tw_low, tw_high, width,
-                                 td["maxtime"][..., None],
-                                 prize / width,
-                                 prize_dis_depot], dim=-1)
-        out = self.init_embed(feature)
-        return out
-
-class OPSPTWInitEmbedding(nn.Module):
-    """Initial embedding for the OPSPTW 
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the cities
-        - prize:
-        - time window, low, high
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(OPSPTWInitEmbedding, self).__init__()
-        
-        node_dim = 9  # x, y, prize, tw_low, tw_high, width,  maxtime, prize/width, prize/todepot
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        prize = td["prize"][..., None]      # batch, num_loc,
-        tw_low = td["tw_low"][..., None]
-        tw_high = td["tw_high"][..., None]
-        width = tw_high - tw_low
-        batch_size = td["prize"].shape[0]
-        prize_dis_depot = td["adj"][range(batch_size), :, 0][..., None]
-        feature = torch.concat([td["locs"], prize, tw_low, tw_high, width,
-                                 td["maxtime"][..., None],
-                                 prize / width,
-                                 prize_dis_depot], dim=-1)
-        out = self.init_embed(feature)
-        return out
-
-class OPSAInitEmbedding(nn.Module):
-    """Initial embedding for the OPSA
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the cities
-        - prize:
-        - time window, low, high
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(OPSAInitEmbedding, self).__init__()
+        super(pgInitEmbedding, self).__init__()
         weather_dim = 3
         node_dim = 10  # x, y, cost, attack_prob, tw_low, tw_high, width,  maxtime, prize/width, prize/todepot
         self.init_embed = nn.Linear(node_dim+weather_dim, embedding_dim, linear_bias)
@@ -169,23 +101,6 @@ class OPSAInitEmbedding(nn.Module):
         out = self.init_embed(feature)
         return out
     
-class SCPInitEmbedding(nn.Module):
-    """Initial embedding for the Traveling Salesman Problems (TSP).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the cities
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(SCPInitEmbedding, self).__init__()
-        node_dim = 3  # x, y, costs
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        out = self.init_embed(torch.cat((td["locs"], td["costs"].unsqueeze(-1)), -1))
-        return out
-    
-    
-
 class VRPInitEmbedding(nn.Module):
     """Initial embedding for the Vehicle Routing Problems (VRP).
     Embed the following node features to the embedding space:
@@ -213,7 +128,7 @@ class VRPInitEmbedding(nn.Module):
         out = torch.cat((depot_embedding, node_embeddings), -2)
         return out
 
-class SVRPInitEmbedding(nn.Module):
+class ACVRPInitEmbedding(nn.Module):
     """Initial embedding for the Vehicle Routing Problems (VRP).
     Embed the following node features to the embedding space:
         - locs: x, y coordinates of the nodes (depot and customers separately)
@@ -221,7 +136,7 @@ class SVRPInitEmbedding(nn.Module):
     """
 
     def __init__(self, embedding_dim, linear_bias=True):
-        super(SVRPInitEmbedding, self).__init__()
+        super(ACVRPInitEmbedding, self).__init__()
         weather_dim = 3
         node_dim = 3  # x, y, demand
         self.init_embed = nn.Linear(node_dim+weather_dim, embedding_dim, linear_bias)
@@ -247,194 +162,3 @@ class SVRPInitEmbedding(nn.Module):
         out = torch.cat((depot_embedding, node_embeddings), -2)
         return out
     
-class PCTSPInitEmbedding(nn.Module):
-    """Initial embedding for the Prize Collecting Traveling Salesman Problems (PCTSP).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (depot and customers separately)
-        - expected_prize: expected prize for visiting the customers.
-            In PCTSP, this is the actual prize. In SPCTSP, this is the expected prize.
-        - penalty: penalty for not visiting the customers
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(PCTSPInitEmbedding, self).__init__()
-        node_dim = 4  # x, y, prize, penalty
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-        self.init_embed_depot = nn.Linear(2, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        depot, cities = td["locs"][:, :1, :], td["locs"][:, 1:, :]
-        depot_embedding = self.init_embed_depot(depot)
-        node_embeddings = self.init_embed(
-            torch.cat(
-                (
-                    cities,
-                    td["expected_prize"][..., None],
-                    td["penalty"][..., 1:, None],
-                ),
-                -1,
-            )
-        )
-        # batch, n_city+1, embedding_dim
-        out = torch.cat((depot_embedding, node_embeddings), -2)
-        return out
-
-
-class OPInitEmbedding(nn.Module):
-    """Initial embedding for the Orienteering Problems (OP).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (depot and customers separately)
-        - prize: prize for visiting the customers
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(OPInitEmbedding, self).__init__()
-        node_dim = 3  # x, y, prize
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-        self.init_embed_depot = nn.Linear(
-            2, embedding_dim, linear_bias
-        )  # depot embedding
-
-    def forward(self, td):
-        depot, cities = td["locs"][:, :1, :], td["locs"][:, 1:, :]
-        depot_embedding = self.init_embed_depot(depot)
-        node_embeddings = self.init_embed(
-            torch.cat(
-                (
-                    cities,
-                    td["prize"][..., 1:, None],  # exclude depot
-                ),
-                -1,
-            )
-        )
-        out = torch.cat((depot_embedding, node_embeddings), -2)
-        return out
-
-
-class DPPInitEmbedding(nn.Module):
-    """Initial embedding for the Decap Placement Problem (DPP), EDA (electronic design automation).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (cells)
-        - probe: index of the (single) probe cell. We embed the euclidean distance from the probe to all cells.
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(DPPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
-        self.init_embed = nn.Linear(node_dim, embedding_dim // 2, linear_bias)  # locs
-        self.init_embed_probe = nn.Linear(1, embedding_dim // 2, linear_bias)  # probe
-
-    def forward(self, td):
-        node_embeddings = self.init_embed(td["locs"])
-        probe_embedding = self.init_embed_probe(
-            self._distance_probe(td["locs"], td["probe"])
-        )
-        return torch.cat([node_embeddings, probe_embedding], -1)
-
-    def _distance_probe(self, locs, probe):
-        # Euclidean distance from probe to all locations
-        probe_loc = torch.gather(locs, 1, probe.unsqueeze(-1).expand(-1, -1, 2))
-        return torch.norm(locs - probe_loc, dim=-1).unsqueeze(-1)
-
-
-class MDPPInitEmbedding(nn.Module):
-    """Initial embedding for the Multi-port Placement Problem (MDPP), EDA (electronic design automation).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (cells)
-        - probe: indexes of the probe cells (multiple). We embed the euclidean distance of each cell to the closest probe.
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(MDPPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)  # locs
-        self.init_embed_probe_distance = nn.Linear(
-            1, embedding_dim, linear_bias
-        )  # probe_distance
-        self.project_out = nn.Linear(embedding_dim * 2, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        probes = td["probe"]
-        locs = td["locs"]
-        node_embeddings = self.init_embed(locs)
-
-        # Get the shortest distance from any probe
-        dist = torch.cdist(locs, locs, p=2)
-        dist[~probes] = float("inf")
-        min_dist, _ = torch.min(dist, dim=1)
-        min_probe_dist_embedding = self.init_embed_probe_distance(min_dist[..., None])
-
-        return self.project_out(
-            torch.cat([node_embeddings, min_probe_dist_embedding], -1)
-        )
-
-
-class PDPInitEmbedding(nn.Module):
-    """Initial embedding for the Pickup and Delivery Problem (PDP).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (depot, pickups and deliveries separately)
-           Note that pickups and deliveries are interleaved in the input.
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(PDPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
-        self.init_embed_depot = nn.Linear(2, embedding_dim, linear_bias)
-        self.init_embed_pick = nn.Linear(node_dim * 2, embedding_dim, linear_bias)
-        self.init_embed_delivery = nn.Linear(node_dim, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        depot, locs = td["locs"][..., 0:1, :], td["locs"][..., 1:, :]
-        num_locs = locs.size(-2)
-        pick_feats = torch.cat(
-            [locs[:, : num_locs // 2, :], locs[:, num_locs // 2 :, :]], -1
-        )  # [batch_size, graph_size//2, 4]
-        delivery_feats = locs[:, num_locs // 2 :, :]  # [batch_size, graph_size//2, 2]
-        depot_embeddings = self.init_embed_depot(depot)
-        pick_embeddings = self.init_embed_pick(pick_feats)
-        delivery_embeddings = self.init_embed_delivery(delivery_feats)
-        # concatenate on graph size dimension
-        return torch.cat([depot_embeddings, pick_embeddings, delivery_embeddings], -2)
-
-
-class MTSPInitEmbedding(nn.Module):
-    """Initial embedding for the Multiple Traveling Salesman Problem (mTSP).
-    Embed the following node features to the embedding space:
-        - locs: x, y coordinates of the nodes (depot, cities)
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        """NOTE: new made by Fede. May need to be checked"""
-        super(MTSPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-        self.init_embed_depot = nn.Linear(
-            2, embedding_dim, linear_bias
-        )  # depot embedding
-
-    def forward(self, td):
-        depot_embedding = self.init_embed_depot(td["locs"][..., 0:1, :])
-        node_embedding = self.init_embed(td["locs"][..., 1:, :])
-        return torch.cat([depot_embedding, node_embedding], -2)
-
-
-class SMTWTPInitEmbedding(nn.Module):
-    """Initial embedding for the Single Machine Total Weighted Tardiness Problem (SMTWTP).
-    Embed the following node features to the embedding space:
-        - job_due_time: due time of the jobs
-        - job_weight: weights of the jobs
-        - job_process_time: the processing time of jobs
-    """
-
-    def __init__(self, embedding_dim, linear_bias=True):
-        super(SMTWTPInitEmbedding, self).__init__()
-        node_dim = 3  # job_due_time, job_weight, job_process_time
-        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
-
-    def forward(self, td):
-        job_due_time = td["job_due_time"]
-        job_weight = td["job_weight"]
-        job_process_time = td["job_process_time"]
-        feat = torch.stack((job_due_time, job_weight, job_process_time), dim=-1)
-        out = self.init_embed(feat)
-        return out

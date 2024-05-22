@@ -92,7 +92,7 @@ class EvalBase:
         raise NotImplementedError("Implement in subclass")
 
     def _get_rewards(self, td, out):
-        if self.env.name == "scp" or self.env.name == "opsa":      # in scp, reward in recorded in every step
+        if self.env.name == "scp" or self.env.name == "pg":      # in scp, reward in recorded in every step
             return out["reward"]
         else:
             return self.env.get_reward(td, out["actions"])

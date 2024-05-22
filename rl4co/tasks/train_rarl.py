@@ -12,8 +12,6 @@ from omegaconf import DictConfig
 
 from rl4co import utils
 from rl4co.utils import RL4COTrainer
-from memory_profiler import profile
-from guppy import hpy
 pyrootutils.setup_root(__file__, indicator=".gitignore", pythonpath=True)
 
 
@@ -150,7 +148,7 @@ def run(cfg: DictConfig) -> Tuple[dict, dict]:
                 # prog_ = "rarlprog"
                 
                 if cfg.get("another"):
-                    from ..model_MA.am_amppo import AM_PPO
+                    from ..model_ccdo.am_amppo import AM_PPO
                     model_tmp = AM_PPO(env, protagonist, adversary)
                     ckpt_rarl_prog_path = cfg.get("another_rarl_prog_path")
                     model_rarl_tmp = model_tmp.load_from_checkpoint(ckpt_rarl_prog_path)

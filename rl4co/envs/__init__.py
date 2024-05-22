@@ -4,52 +4,24 @@ from rl4co.envs.common.base import RL4COEnvBase
 # for fix env: svrp_fix
 from rl4co.envs.graph_pool import svrp_graph_pool
 # EDA
-from rl4co.envs.eda import DPPEnv, MDPPEnv
 
 # Routing
 from rl4co.envs.routing import (
-    ATSPEnv,
     CVRPEnv,
-    MTSPEnv,
-    OPEnv,
-    PCTSPEnv,
-    PDPEnv,
-    SDVRPEnv,
-    SPCTSPEnv,
-    TSPEnv,
-    SVRPEnv,
-    CSPEnv,
-    SCPEnv,
-    OPSWTWEnv,
-    OPSPTWEnv,
-    OPSAEnv
+    ACVRPEnv,
+    ACSPEnv,
+    PGEnv
 )
 
 # Scheduling
-from rl4co.envs.scheduling import FFSPEnv, SMTWTPEnv
 
 # Register environments
 ENV_REGISTRY = {
-    "atsp": ATSPEnv,
     "cvrp": CVRPEnv,
-    "svrp": SVRPEnv,
-    "svrp_fix": SVRPEnv,
-    "dpp": DPPEnv,
-    "ffsp": FFSPEnv,
-    "mdpp": MDPPEnv,
-    "mtsp": MTSPEnv,
-    "op": OPEnv,
-    "pctsp": PCTSPEnv,
-    "pdp": PDPEnv,
-    "sdvrp": SDVRPEnv,
-    "spctsp": SPCTSPEnv,
-    "tsp": TSPEnv,
-    "csp": CSPEnv,
-    "scp": SCPEnv,
-    "smtwtp": SMTWTPEnv,
-    "opswtw": OPSWTWEnv,
-    "opsptw": OPSPTWEnv,
-    "opsa": OPSAEnv
+    "svrp": ACVRPEnv,
+    "svrp_fix": ACVRPEnv,
+    "csp": ACSPEnv,
+    "pg": PGEnv
 }
 
 

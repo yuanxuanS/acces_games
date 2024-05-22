@@ -9,6 +9,12 @@ from torch.utils.data import DataLoader
 
 from rl4co.heuristic import CW_acvrp, TabuSearch_acvrp, Random_acvrp
 
+from lightning.pytorch.core.saving import _load_from_checkpoint
+from tensordict import TensorDict
+from typing_extensions import Self
+from typing import IO, Any, Optional, Union, cast
+from lightning.fabric.utilities.types import _MAP_LOCATION_TYPE, _PATH
+
 
 from rl4co.data.dataset import tensordict_collate_fn
 from rl4co.data.generate_data import generate_default_datasets
@@ -21,11 +27,11 @@ log = get_pylogger(__name__)
 OPPONENTS_REGISTRY = {
     "cw": CW_acvrp,
     "tabu": TabuSearch_acvrp,
-    "random": Random_acvrp,
+    "random": Random_acvrp
 
 }
 
-class RL4COAdversaryLitModule(LightningModule):
+class RL4COMarlLitModule(LightningModule):
     """Base class for "Adversary" Lightning modules for RL4CO. This defines the general training loop in terms of
     Adversary RL algorithms. Subclasses should implement mainly the `shared_step` to define the specific
     loss functions and optimization routines.
@@ -58,8 +64,8 @@ class RL4COAdversaryLitModule(LightningModule):
     def __init__(
         self,
         env: RL4COEnvBase,
-        opponent: object or None,
-        policy: nn.Module,
+        protagonist: LightningModule or None,
+        adversary: LightningModule or None,
         batch_size: int = 512,
         val_batch_size: int = None,
         test_batch_size: int = None,
@@ -101,8 +107,8 @@ class RL4COAdversaryLitModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.env = env
-        self.policy = policy
-        self.opponent = opponent
+        self.protagonist = protagonist
+        self.adversary = adversary
 
         self.instantiate_metrics(metrics)
         self.log_on_step = log_on_step
@@ -135,8 +141,7 @@ class RL4COAdversaryLitModule(LightningModule):
         """Dictionary of metrics to be logged at each phase"""
 
         if not metrics:
-            # log.info("No metrics specified, using default")
-            pass
+            log.info("No metrics specified, using default")
         self.train_metrics = metrics.get("train", ["loss", "reward"])
         self.val_metrics = metrics.get("val", ["reward"])
         self.test_metrics = metrics.get("test", ["reward"])
@@ -151,7 +156,7 @@ class RL4COAdversaryLitModule(LightningModule):
             We also send to the loggers all hyperparams that are not `nn.Module` (i.e. the policy).
             Apparently PyTorch Lightning does not do this by default.
         """
-        # log.info("Setting up batch sizes for train/val/test")
+        log.info("Setting up batch sizes for train/val/test")
         train_bs, val_bs, test_bs = (
             self.data_cfg["batch_size"],
             self.data_cfg["val_batch_size"],
@@ -161,7 +166,7 @@ class RL4COAdversaryLitModule(LightningModule):
         self.val_batch_size = train_bs if val_bs is None else val_bs
         self.test_batch_size = self.val_batch_size if test_bs is None else test_bs
 
-        # log.info("Setting up datasets")
+        log.info("Setting up datasets")
 
         # Create datasets automatically. If found, this will skip
         if self.data_cfg["generate_data"]:
@@ -203,7 +208,7 @@ class RL4COAdversaryLitModule(LightningModule):
         if parameters is None:
             parameters = self.policy.parameters()
 
-        # log.info(f"Instantiating optimizer <{self._optimizer_name_or_cls}>")
+        log.info(f"Instantiating optimizer <{self._optimizer_name_or_cls}>")
         if isinstance(self._optimizer_name_or_cls, str):
             optimizer = create_optimizer(
                 parameters, self._optimizer_name_or_cls, **self.optimizer_kwargs
@@ -219,7 +224,7 @@ class RL4COAdversaryLitModule(LightningModule):
         if self._lr_scheduler_name_or_cls is None:
             return optimizer
         else:
-            # log.info(f"Instantiating LR scheduler <{self._lr_scheduler_name_or_cls}>")
+            log.info(f"Instantiating LR scheduler <{self._lr_scheduler_name_or_cls}>")
             if isinstance(self._lr_scheduler_name_or_cls, str):
                 scheduler = create_scheduler(
                     optimizer, self._lr_scheduler_name_or_cls, **self.lr_scheduler_kwargs
@@ -264,16 +269,17 @@ class RL4COAdversaryLitModule(LightningModule):
         return metrics
 
     def forward(self, td, **kwargs):
-        """Forward pass for the model. Simple wrapper around `policy`. Uses `env` from the module if not provided."""
+        """Forward pass for the protagonist. ."""
         if kwargs.get("env", None) is None:
             env = self.env
         else:
-            # log.info("Using env from kwargs")
+            log.info("Using env from kwargs")
             env = kwargs.pop("env")
-        return self.policy(td, env, **kwargs)
+        return self.protagonist(td, env, **kwargs)
 
     def shared_step(self, batch: Any, batch_idx: int, phase: str, **kwargs):
         """Shared step between train/val/test. To be implemented in subclass"""
+        
         raise NotImplementedError("Shared step is required to implemented in subclass")
 
     def training_step(self, batch: Any, batch_idx: int):
@@ -307,7 +313,7 @@ class RL4COAdversaryLitModule(LightningModule):
         """
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
         self.train_dataset = self.wrap_dataset(train_dataset)
-        # log.info("end of an epoch")
+        log.info("end of an epoch")
         print(f"end of an epoch, time {time.time()}")
 
     def wrap_dataset(self, dataset):
@@ -342,6 +348,51 @@ class RL4COAdversaryLitModule(LightningModule):
             num_workers=self.dataloader_num_workers,
             collate_fn=tensordict_collate_fn,
         )
+        
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: Union[_PATH, IO],
+        map_location: _MAP_LOCATION_TYPE = None,
+        hparams_file: Optional[_PATH] = None,
+        strict: bool = False,
+        load_baseline: bool = False,
+        **kwargs: Any,
+    ) -> Self:
+        """Load model from checkpoint/
+
+        Note:
+            This is a modified version of `load_from_checkpoint` from `pytorch_lightning.core.saving`.
+            It deals with matching keys for the baseline by first running setup
+        """
+
+        if strict:
+            log.warning("Setting strict=False for loading model from checkpoint.")
+            strict = False
+
+        # Do not use strict
+        loaded = _load_from_checkpoint(
+            cls,
+            checkpoint_path,
+            map_location,
+            hparams_file,
+            strict,
+            **kwargs,
+        )
+
+        # Load baseline state dict
+        if load_baseline:
+            # setup baseline first
+            loaded.setup()
+            loaded.post_setup_hook()
+            # load baseline state dict
+            state_dict = torch.load(checkpoint_path)["state_dict"]
+            # get only baseline parameters
+            state_dict = {k: v for k, v in state_dict.items() if "baseline" in k}
+            state_dict = {k.replace("baseline.", "", 1): v for k, v in state_dict.items()}
+            loaded.baseline.load_state_dict(state_dict)
+
+        return cast(Self, loaded)
 
 def get_adversary_opponent(name, **kw):
     """Get a REINFORCE baseline by name

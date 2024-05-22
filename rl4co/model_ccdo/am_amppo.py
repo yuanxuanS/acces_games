@@ -5,9 +5,12 @@ import torch
 import torch.nn as nn
 
 from lightning import LightningModule
+from rl4co.model_ccdo.base import RL4COMarlLitModule
 from torch.utils.data import DataLoader
 
 from rl4co.heuristic import CW_acvrp, TabuSearch_acvrp, Random_acvrp
+from rl4co.models.zoo.am import AttentionModel
+from rl4co.model_adversary import PPOContiAdvModel
 
 
 from rl4co.data.dataset import tensordict_collate_fn
@@ -15,17 +18,28 @@ from rl4co.data.generate_data import generate_default_datasets
 from rl4co.envs.common.base import RL4COEnvBase
 from rl4co.utils.optim_helpers import create_optimizer, create_scheduler
 from rl4co.utils.pylogger import get_pylogger
+
+from lightning.pytorch.utilities import grad_norm
+from rl4co.utils.lightning import get_lightning_device
+
 import time
 log = get_pylogger(__name__)
 
 OPPONENTS_REGISTRY = {
     "cw": CW_acvrp,
     "tabu": TabuSearch_acvrp,
-    "random": Random_acvrp,
-
+    "random": Random_acvrp
 }
 
-class RL4COAdversaryLitModule(LightningModule):
+ADVERSARY_REGISTRY = {
+    "am-ppo": PPOContiAdvModel,
+}
+
+PROTAGONIST_REGISTRY = {
+    "am": AttentionModel,
+}
+
+class AM_PPO(RL4COMarlLitModule):
     """Base class for "Adversary" Lightning modules for RL4CO. This defines the general training loop in terms of
     Adversary RL algorithms. Subclasses should implement mainly the `shared_step` to define the specific
     loss functions and optimization routines.
@@ -58,8 +72,8 @@ class RL4COAdversaryLitModule(LightningModule):
     def __init__(
         self,
         env: RL4COEnvBase,
-        opponent: object or None,
-        policy: nn.Module,
+        protagonist: Union[str, LightningModule] = None,
+        adversary: Union[str, LightningModule] = None,
         batch_size: int = 512,
         val_batch_size: int = None,
         test_batch_size: int = None,
@@ -67,23 +81,14 @@ class RL4COAdversaryLitModule(LightningModule):
         val_data_size: int = 10_000,
         test_data_size: int = 10_000,
         optimizer: Union[str, torch.optim.Optimizer, partial] = "Adam",
-        adv_optimizer: Union[str, torch.optim.Optimizer, partial] = "Adam",
         optimizer_kwargs: dict = {"lr": 1e-4},
-        adv_optimizer_kwargs: dict = {"lr": 1e-4},
         lr_scheduler: Union[str, torch.optim.lr_scheduler.LRScheduler, partial] = None,
-        adv_lr_scheduler: Union[str, torch.optim.lr_scheduler.LRScheduler, partial] = None,
         lr_scheduler_kwargs: dict = {
             "milestones": [80, 95],
             "gamma": 0.1,
         },
-        adv_lr_scheduler_kwargs: dict = {
-            "milestones": [80, 95],
-            "gamma": 0.1,
-        },
         lr_scheduler_interval: str = "epoch",
-        adv_lr_scheduler_interval: str = "epoch",
         lr_scheduler_monitor: str = "val/reward",
-        adv_lr_scheduler_monitor: str = "val/reward",
         generate_data: bool = True,
         shuffle_train_dataloader: bool = True,
         dataloader_num_workers: int = 0,
@@ -93,7 +98,7 @@ class RL4COAdversaryLitModule(LightningModule):
         metrics: dict = {},
         **litmodule_kwargs,
     ):
-        super().__init__(**litmodule_kwargs)
+        super().__init__(env, protagonist, adversary, **litmodule_kwargs)
 
         # This line ensures params passed to LightningModule will be saved to ckpt
         # it also allows to access params with 'self.hparams' attribute
@@ -101,8 +106,17 @@ class RL4COAdversaryLitModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.env = env
-        self.policy = policy
-        self.opponent = opponent
+        if isinstance(protagonist, str):
+            protagonist = get_protagonist(protagonist)
+        self.protagonist = protagonist
+        self.protagonist.automatic_optimization = False
+        
+        if isinstance(adversary, str):
+            adversary = get_adversary(adversary)
+        self.adversary = adversary
+        
+        # 加
+        self.automatic_optimization = False
 
         self.instantiate_metrics(metrics)
         self.log_on_step = log_on_step
@@ -119,14 +133,12 @@ class RL4COAdversaryLitModule(LightningModule):
             "test_data_size": test_data_size,
         }
 
-        self._optimizer_name_or_cls: Union[str, torch.optim.Optimizer] = optimizer
-        self.optimizer_kwargs: dict = optimizer_kwargs
-        self._lr_scheduler_name_or_cls: Union[
-            str, torch.optim.lr_scheduler.LRScheduler
-        ] = lr_scheduler
-        self.lr_scheduler_kwargs: dict = lr_scheduler_kwargs
-        self.lr_scheduler_interval: str = lr_scheduler_interval
-        self.lr_scheduler_monitor: str = lr_scheduler_monitor
+        self._optimizer_name_or_cls = None
+        self.optimizer_kwargs = None
+        self._lr_scheduler_name_or_cls = None
+        self.lr_scheduler_kwargs = None
+        self.lr_scheduler_interval = None
+        self.lr_scheduler_monitor = None
 
         self.shuffle_train_dataloader = shuffle_train_dataloader
         self.dataloader_num_workers = dataloader_num_workers
@@ -135,9 +147,8 @@ class RL4COAdversaryLitModule(LightningModule):
         """Dictionary of metrics to be logged at each phase"""
 
         if not metrics:
-            # log.info("No metrics specified, using default")
-            pass
-        self.train_metrics = metrics.get("train", ["loss", "reward"])
+            log.info("No metrics specified, using default")
+        self.train_metrics = metrics.get("train", ["loss", "reward", "adv_loss"])
         self.val_metrics = metrics.get("val", ["reward"])
         self.test_metrics = metrics.get("test", ["reward"])
         self.log_on_step = metrics.get("log_on_step", True)
@@ -151,7 +162,7 @@ class RL4COAdversaryLitModule(LightningModule):
             We also send to the loggers all hyperparams that are not `nn.Module` (i.e. the policy).
             Apparently PyTorch Lightning does not do this by default.
         """
-        # log.info("Setting up batch sizes for train/val/test")
+        log.info("Setting up batch sizes for train/val/test")
         train_bs, val_bs, test_bs = (
             self.data_cfg["batch_size"],
             self.data_cfg["val_batch_size"],
@@ -161,7 +172,7 @@ class RL4COAdversaryLitModule(LightningModule):
         self.val_batch_size = train_bs if val_bs is None else val_bs
         self.test_batch_size = self.val_batch_size if test_bs is None else test_bs
 
-        # log.info("Setting up datasets")
+        log.info("Setting up datasets")
 
         # Create datasets automatically. If found, this will skip
         if self.data_cfg["generate_data"]:
@@ -191,8 +202,14 @@ class RL4COAdversaryLitModule(LightningModule):
                 logger.save()
 
     def post_setup_hook(self):
-        """Hook to be called after setup. Can be used to set up subclasses without overriding `setup`"""
-        pass
+        # Make baseline taking model itself and train_dataloader from model as input
+        self.protagonist.baseline.setup(
+            self.protagonist.policy,
+            self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+            dataset_size=self.data_cfg["val_data_size"],
+        )
 
     def configure_optimizers(self, parameters=None):
         """
@@ -200,43 +217,29 @@ class RL4COAdversaryLitModule(LightningModule):
             parameters: parameters to be optimized. If None, will use `self.policy.parameters()
         """
 
-        if parameters is None:
-            parameters = self.policy.parameters()
-
-        # log.info(f"Instantiating optimizer <{self._optimizer_name_or_cls}>")
-        if isinstance(self._optimizer_name_or_cls, str):
-            optimizer = create_optimizer(
-                parameters, self._optimizer_name_or_cls, **self.optimizer_kwargs
-            )
-        elif isinstance(self._optimizer_name_or_cls, partial):
-            optimizer = self._optimizer_name_or_cls(parameters, **self.optimizer_kwargs)
-        else:  # User-defined optimizer
-            opt_cls = self._optimizer_name_or_cls
-            optimizer = opt_cls(parameters, **self.optimizer_kwargs)
-            assert isinstance(optimizer, torch.optim.Optimizer)
-
-        # instantiate lr scheduler
-        if self._lr_scheduler_name_or_cls is None:
-            return optimizer
+        # prog_optim_lst, prog_sche_dict = self.protagonist.configure_optimizers()
+        prog_optim_dict = {}
+        prog_optim = self.protagonist.configure_optimizers()
+        if isinstance(prog_optim, tuple):
+            prog_optim_cls, prog_lrsche_dict = prog_optim
+            
+            prog_optim_dict["optimizer"] = prog_optim_cls[0]
+            prog_optim_dict["lr_scheduler"] = prog_lrsche_dict
         else:
-            # log.info(f"Instantiating LR scheduler <{self._lr_scheduler_name_or_cls}>")
-            if isinstance(self._lr_scheduler_name_or_cls, str):
-                scheduler = create_scheduler(
-                    optimizer, self._lr_scheduler_name_or_cls, **self.lr_scheduler_kwargs
-                )
-            elif isinstance(self._lr_scheduler_name_or_cls, partial):
-                scheduler = self._lr_scheduler_name_or_cls(
-                    optimizer, **self.lr_scheduler_kwargs
-                )
-            else:  # User-defined scheduler
-                scheduler_cls = self._lr_scheduler_name_or_cls
-                scheduler = scheduler_cls(optimizer, **self.lr_scheduler_kwargs)
-                assert isinstance(scheduler, torch.optim.lr_scheduler.LRScheduler)
-            return [optimizer], {
-                "scheduler": scheduler,
-                "interval": self.lr_scheduler_interval,
-                "monitor": self.lr_scheduler_monitor,
-            }
+            prog_optim_dict["optimizer"] = prog_optim
+            
+        # adv_optim_lst, adv_sche_dict = self.adversary.configure_optimizers()
+        adv_optim_dict = {}
+        adv_optim = self.adversary.configure_optimizers()
+        if isinstance(adv_optim, tuple):
+            adv_optim_cls, adv_lrsche_dict = adv_optim
+            adv_optim_dict["optimizer"] = adv_optim_cls[0]
+            adv_optim_dict["lr_scheduler"] = adv_lrsche_dict
+        else:
+            adv_optim_dict["optimizer"] = adv_optim
+        
+        # sche_dict = {"prog": prog_optim, "adv":adv_optim}
+        return (prog_optim_dict, adv_optim_dict)
 
     def log_metrics(self, metric_dict: dict, phase: str, dataloader_idx: int = None):
         """Log metrics to logger and progress bar"""
@@ -252,7 +255,9 @@ class RL4COAdversaryLitModule(LightningModule):
             if k in metrics
         }
         log_on_step = self.log_on_step if phase == "train" else False
-        on_epoch = False if phase == "train" else True
+        # log_on_step = True
+        # on_epoch = False if phase == "train" else True
+        on_epoch = True
         self.log_dict(
             metrics,
             on_step=log_on_step,
@@ -263,21 +268,72 @@ class RL4COAdversaryLitModule(LightningModule):
         )
         return metrics
 
-    def forward(self, td, **kwargs):
-        """Forward pass for the model. Simple wrapper around `policy`. Uses `env` from the module if not provided."""
+    def forward(self, td, with_adv, phase, **kwargs):
+        """Forward pass for the protagonist. ."""
         if kwargs.get("env", None) is None:
             env = self.env
         else:
-            # log.info("Using env from kwargs")
+            log.info("Using env from kwargs")
             env = kwargs.pop("env")
-        return self.policy(td, env, **kwargs)
+            
+        if with_adv:    # adv disturb env
+            out_adv = self.adversary(td.clone())
+            td = env.reset_stochastic_demand(td, out_adv["action_adv"][..., None])    # env transition: get new real demand
+        return self.protagonist(td, **kwargs)
 
     def shared_step(self, batch: Any, batch_idx: int, phase: str, **kwargs):
         """Shared step between train/val/test. To be implemented in subclass"""
-        raise NotImplementedError("Shared step is required to implemented in subclass")
+        # phase = "train"
+        # adv forward: change hyparams, env stochvar transition
+        td, out_adv = self.adversary.inference_step(batch, batch_idx, phase)
+        
+        optim_prog, optim_adv = self.optimizers()
+        
+        loop_times = 1
+        if phase == "train":
+            loop_times = 1
+            
+        
+        for _ in range(loop_times):
+            # prog forward: get solution and update
+            td_temp = td.clone()
+            out_prog = self.protagonist.calculoss_step(td_temp, batch, phase)
+            # if False:
+            if phase == "train":
+                prog_loss = out_prog["loss"]
+                self.protagonist.man_update_step(prog_loss, optim_prog)
+        
+        td = td_temp.clone()
+        out_all = {key: value for key, value in out_prog.items()}
+        # ? change out_adv : reward? or td?
+        # if False:
+        if phase == "train":
+            # adv update
+            if self.current_epoch < 100: #<90:     # fix adv after 90 epoch
+                if self.current_epoch % 2 == 0:
+                    out_adv = self.adversary.update_step(td, out_adv, phase, optimizer=optim_adv)
+        
+                
+        for key, value in out_adv.items():
+            if "adv" not in key:
+                key = "adv_" + key
+            out_all[key] = value
+
+        metrics = self.log_metrics(out_all, phase)
+        # debug
+        # if phase == "train":
+        #     norms_prog_policy = grad_norm(self.protagonist.policy, norm_type=2)
+        #     norms_adv_policy = grad_norm(self.adversary.policy, norm_type=2)
+        #     norms_adv_critic = grad_norm(self.adversary.critic, norm_type=2)
+            # print(f' prog grad norm: {norms_prog_policy["grad_2.0_norm_total"]} \
+            #     adv, policy norm {norms_adv_policy["grad_2.0_norm_total"]}, \
+            #     critic norm {norms_adv_critic["grad_2.0_norm_total"]}')
+        return metrics
+        # raise NotImplementedError("Shared step is required to implemented in subclass")
 
     def training_step(self, batch: Any, batch_idx: int):
         # To use new data every epoch, we need to call reload_dataloaders_every_epoch=True in Trainer
+        
         return self.shared_step(batch, batch_idx, phase="train")
 
     def validation_step(self, batch: Any, batch_idx: int, dataloader_idx: int = None):
@@ -302,19 +358,42 @@ class RL4COAdversaryLitModule(LightningModule):
         return self._dataloader(self.test_dataset, self.test_batch_size)
 
     def on_train_epoch_end(self):
+        """Callback for end of training epoch: we evaluate the baseline"""
+        self.protagonist.baseline.epoch_callback(
+            self.protagonist.policy,
+            env=self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+            epoch=self.current_epoch,
+            dataset_size=self.data_cfg["val_data_size"],
+        )
+        
         """Called at the end of the training epoch. This can be used for instance to update the train dataset
         with new data (which is the case in RL).
         """
         train_dataset = self.env.dataset(self.data_cfg["train_data_size"], "train")
         self.train_dataset = self.wrap_dataset(train_dataset)
-        # log.info("end of an epoch")
+        log.info("end of an epoch")
         print(f"end of an epoch, time {time.time()}")
+        
+        sche_prog, sche_adv = self.lr_schedulers()
+        if isinstance(sche_prog, torch.optim.lr_scheduler.MultiStepLR):
+            sche_prog.step()
+        if isinstance(sche_adv, torch.optim.lr_scheduler.MultiStepLR):
+            sche_adv.step()
 
     def wrap_dataset(self, dataset):
         """Wrap dataset with policy-specific wrapper. This is useful i.e. in REINFORCE where we need to
         collect the greedy rollout baseline outputs.
         """
-        return dataset
+        """Wrap dataset from baseline evaluation. Used in greedy rollout baseline"""
+
+        return self.protagonist.baseline.wrap_dataset(
+            dataset,
+            self.env,
+            batch_size=self.val_batch_size,
+            device=get_lightning_device(self),
+        )
 
     def _dataloader(self, dataset, batch_size, shuffle=False):
         """Handle both single datasets and list / dict of datasets"""
@@ -355,3 +434,25 @@ def get_adversary_opponent(name, **kw):
             f"Unknown baseline {opponent_cls}. Available baselines: {OPPONENTS_REGISTRY.keys()}"
         )
     return opponent_cls
+
+def get_adversary(name, **kw):
+    """Get a adversary by name
+    """
+
+    adversary_cls = ADVERSARY_REGISTRY.get(name, None)
+    if adversary_cls is None:
+        raise ValueError(
+            f"Unknown baseline {adversary_cls}. Available baselines: {ADVERSARY_REGISTRY.keys()}"
+        )
+    return adversary_cls
+
+def get_protagonist(name, **kw):
+    """Get a protagonist by name
+    """
+
+    protagonist_cls = PROTAGONIST_REGISTRY.get(name, None)
+    if protagonist_cls is None:
+        raise ValueError(
+            f"Unknown baseline {protagonist_cls}. Available baselines: {PROTAGONIST_REGISTRY.keys()}"
+        )
+    return protagonist_cls

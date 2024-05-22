@@ -4,16 +4,22 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  - callbacks: default.yaml
+  - callbacks: default_psro.yaml
   - logger: null # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default.yaml
   - paths: default.yaml
   - extras: default.yaml
   - hydra: default.yaml
-  - model: default.yaml
+  - model_ccdo: ccdo_am-ppo.yaml   # 
+  - model_adversary: am-ppo.yaml
+  - model: am.yaml
   - env: default.yaml
-  - graph_pool: default.yaml
-  - new_experiment: routing/am.yaml #routing/am.yaml
+  # experiment configs allow for version control of specific hyperparameters
+  # e.g. best hyperparameters for given model and datamodule
+  # - experiment: base_1.yaml # set baseline experiment
+  # - experiment: routing/am.yaml # set baseline experiment
+  # - new_experiment: base_svrp.yaml
+  - new_experiment: CCDO/ccdo_am-ppo.yaml 
   # config for hyperparameter optimization
   - hparams_search: null
 
@@ -25,12 +31,10 @@ defaults:
   - debug: null
 
   # evaluate配置: train的时候必须使用default
-  - evaluate:    default.yaml    #greedy_eval.yaml  #baseline_eval.yaml # 
+  - evaluate:     eval_other_with_ccdo_adver.yaml #default.yaml #greedy_eval_ccdo.yaml # 
 
-# fix graph
-fix_graph: false
 # task name, determines output directory path
-mode: "train"
+mode: "train_ccdo"
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs
@@ -58,7 +62,7 @@ matmul_precision: "medium"
 
 # metrics to be logged
 metrics:
-  train: ["loss", "reward"]
+  train: ["loss", "reward", "adv_loss"]
   val: ["reward"]
   test: ["reward"]
   log_on_step: True
