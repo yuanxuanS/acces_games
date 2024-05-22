@@ -7,7 +7,8 @@ from torch.utils.data import DataLoader
 import hydra
 from lightning import Callback, LightningModule
 from rl4co.data.dataset import tensordict_collate_fn
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, LocalSearch1_csp, LocalSearch2_csp, localsearch_opsa
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, LocalSearch1_csp, \
+    LocalSearch2_csp, LocalSearch_opsa, Greedy_opsa
 from tensordict.tensordict import TensorDict
 
 
@@ -24,7 +25,8 @@ baselines_mapping = {
             "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
         },
         "opsa": {
-            "LS":  {"func": localsearch_opsa, "kwargs": {}},
+            "LS":  {"func": LocalSearch_opsa, "kwargs": {}},
+            "greedy_op": {"func": Greedy_opsa, "kwargs": {}},
         }
         
     }

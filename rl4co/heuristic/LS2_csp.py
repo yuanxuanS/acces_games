@@ -34,7 +34,7 @@ class LocalSearch2_csp:
         
         forward(): call this to get all solutions, a nested list, call convert_to_fit_npz as for savez
         '''
-        self.device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")  # #
         self.td = td
         self.batch_size = self.td["locs"].shape[0]
         self.num_loc = self.td["locs"].shape[1]
@@ -47,7 +47,7 @@ class LocalSearch2_csp:
         self.ls_2opt = LS_csp_2opt(self.locs[self.instance_idx])
 
         self.max_iters = 25
-        self.J=150
+        self.J=100
         self.T=10
         self.K=10
         self.search_iters = 30

@@ -4,8 +4,10 @@ from matplotlib.colors import PowerNorm
 import seaborn as sns
 from scipy.interpolate import make_interp_spline
 
-plt.rcParams['figure.figsize'] = (6.5, 5)
-plt.rcParams['axes.labelsize'] = 15
+plt.rcParams['figure.figsize'] = (7,5.5)
+plt.rcParams['axes.labelsize'] = 20
+
+plt.tight_layout()
 def inter(x, y):
     x_smooth = np.linspace(x.min(), x.max(), 300)  # np.linspace 等差数列,从x.min()到x.max()生成300个数，便于后续插值
     y_smooth = make_interp_spline(x, y)(x_smooth)
@@ -14,7 +16,7 @@ def inter(x, y):
 linestyle = ['-', '--', ':', '-.']
 color = ['r', 'g', 'b', 'k']
 
-save_dir = "/home/panpan/rl4co/psro/graphs4/"
+save_dir = "/home/panpan/rl4co/psro/graphs5/"
 def load_psro_info(log_pth):
      
     data = np.load(log_pth+ '/info.npz')  # 加载
@@ -27,11 +29,13 @@ def draw_jpc(env_name, pth, save_format):
     _, payoffs = load_psro_info(pth)
     # plot JPC
     plt.figure()
-    plt.rcParams['font.size'] = 14
+    plt.rcParams['font.size'] = 20
     plt.imshow(payoffs, cmap='coolwarm', norm=PowerNorm(3))
-    plt.title("utility of PSRO ("+env_name[:-2]+" "+env_name[-2:]+")")
-    plt.xlabel("adversary")
-    plt.ylabel("protagonist")
+    # plt.title("utility of PSRO ("+env_name[:-2]+" "+env_name[-2:]+")", fontsize=30)
+    plt.xlabel("adversary", fontsize=20)
+    plt.ylabel("protagonist", fontsize=20)
+    # ax.set_xlabel("adversary", fontsize=20)
+    # ax.set_ylabel("protagonist", fontsize=20)
     plt.colorbar()
     graph_name =  "JPC"  #
     name = graph_name +"_log_"+env_name
@@ -84,15 +88,17 @@ def plot_nashconv(env_name, pth, window=10, type="inter", save_format="jpg"):
     
     plt.figure()
     plt.rcParams['font.size'] = 14
-    # sns.set(style="darkgrid")
+    sns.set(style="darkgrid")
     if type == "inter":
         ax =sns.tsplot(time=x_sm, data=y_sm, color=color[2], linestyle=linestyle[0])
     elif type == "conv":
         ax =sns.tsplot(time=x_data, data=y_sm, color=color[2], linestyle=linestyle[0])
+    ax.set_xlabel("Iterations", fontsize=20)
+    ax.set_ylabel("Exploitability", fontsize=20)
     # ax =sns.tsplot(time=x_data, data=data, color=color[2], linestyle=linestyle[0], alpha=0.3)
-    plt.xlabel("Iterations", )
-    plt.ylabel("Exploitability")
-    plt.title(f"{env_name[:-2]} {env_name[-2:]}")
+    # plt.xlabel("Iterations", )
+    # plt.ylabel("Exploitability")
+    # plt.title(f"{env_name[:-2]} {env_name[-2:]}", fontsize=30)
     # sns.set(font_scale=3)
     # fig = ax.get_figure()
     plt.savefig(save_dir+name+"_sm_"+str(window)+"."+save_format, format=save_format)
@@ -115,11 +121,14 @@ def smooth(data, sm=1):
     return smooth_data
 
 
-envs = ["csp20", "opsa20", "opsa50", "svrp20"]
+envs = ["csp20", "opsa20", "opsa50", "svrp20", "csp50", "svrp50"]
 pths = ["/home/panpan/rl4co/logs/train_psro/runs/csp20/am-csp20/2024-05-20_03-59-47",
         "/home/panpan/rl4co/logs/train_psro/runs/opsa20/am-opsa20/2024-05-20_14-19-12",
         "/home/panpan/rl4co/logs/train_psro/runs/opsa50/am-opsa50/2024-05-20_21-15-34",
         "/home/panpan/rl4co/logs/train_psro/runs/svrp20/am-svrp20/2024-05-19_22-38-12",
+        "/home/panpan/rl4co/logs/train_psro/runs/csp50/am-csp50/2024-05-20_14-08-06",
+        "/home/panpan/rl4co/logs/train_psro/runs/svrp50/am-svrp50/2024-05-20_04-51-08"
+
         ]
 window=7
 type="conv"

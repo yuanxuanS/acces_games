@@ -205,7 +205,7 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     
     # alphas_loc /= alphas_loc.sum(axis=2)[:, :, np.newaxis, :]       # normalize alpha to 0-1
     alphas_loc *= sum_alpha     # alpha value [4.5*var_w]
-    alphas_loc = np.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
+    # alphas_loc = np.sqrt(alphas_loc)        # alpha value [sqrt(4.5*var_w)]
     signs = np.random.random((n_problems, n_nodes, 9, shape))
     alphas_loc[np.where(signs > 0.5)] *= -1     # half negative: 0 mean, [sqrt(-4.5*var_w) ,s sqrt(4.5*var_w)]
         
@@ -233,13 +233,14 @@ def get_stoch_var(inp, locs, w, alphas, A=0.6, B=0.2, G=0.2):
     return out
 # 20: test和val都是10000
 # 50: test 2000, val 10000
-generate_and_save_stoch_data(10000, 50, "val")
+# generate_and_save_stoch_data(2000, 50, "test")
 # process_swtwtsp_data(0) # 先将所有数据每80000条分别存下来
 # generate_opswtw_data(1280000)
 # concat_npz_data(0)
 
-# td = load_npz_to_tensordict("/home/panpan/rl4co/data0/opsa/opsa20_test_part_data.npz")
-# print(len(dict(td)["locs"]))
+td = load_npz_to_tensordict("/home/panpan/rl4co/logs/train_psro/runs/opsa50/am-opsa50/2024-05-20_21-15-34/adv_stoch_data/adv_1.npz")
+print(len(dict(td)["arr_0"]))
+print(len(dict(td)["arr_0"][0]))
 # print(dict(td)["real_prob"][0,:10])
 # print(dict(td)["attack_prob"][0,:10])
 # print(td["maxtime"].max(), td["tw_high"].max())

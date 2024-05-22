@@ -156,7 +156,7 @@ class OPSAEnv(RL4COEnvBase):
     
     def generate_data(self, batch_size) -> TensorDict:
         # 加载预先保存好的opsa 训练数据
-        data_pth = "/home/u2021141179/rl4co_cp/data/opsa/opsa"+str(self.num_loc)+"_train.npz"
+        data_pth = "/home/panpan/rl4co/data"+str(OPSAEnv.stoch_idx)+"/opsa/opsa"+str(self.num_loc)+"_train.npz"
 
         x_dict = self.load_data(data_pth, batch_size)
         whole_size = x_dict.batch_size[0]

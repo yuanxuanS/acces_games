@@ -5,7 +5,7 @@ import random
 
 class LocalSearch_opsa:
     def __init__(self, td) -> None:
-        super().__init__()
+        super(LocalSearch_opsa).__init__()
         '''
         td: TensorDict, after call .reset() function
         td["locs"]: [batch, num_customer, 2], customers and depot(0)
@@ -37,6 +37,8 @@ class LocalSearch_opsa:
             self.tw_low = self.td["tw_low"]
             self.tw_high = self.td["tw_high"]
             self.maxtime = self.td["maxtime"]
+            self.real_prob = self.td["real_prob"]
+            self.attack_prob = self.td["attack_prob"]
             
             self.batch_size = self.td["locs"].shape[0]
         else:
@@ -75,9 +77,9 @@ class LocalSearch_opsa:
         var_ = sum(squared_deviations) / len(rewards)
 
         return {
-            "solutions": routes,
-            "real rewards": rewards,
-            "real mean reward": mean_,
+            "routes": routes,
+            "rewards": rewards,
+            "mean reward": mean_,
             "var reward": var_,
             "time": est - st,
         }
@@ -123,22 +125,43 @@ class LocalSearch_opsa:
             if self.remove_secutiveR > self.remove_numbers_base:
                 self.remove_secutiveR = 1
 
+        final_reward = self.get_real_reward(best_route)
 
-        return best_reward, best_route
+        return final_reward, best_route
     
     def get_reward(self, route):
         '''
         collect :defended reward - undefended attack's costs
         '''
         # 所有路径上点的costs
-        reward = self.stochastic_cost[self.instance_idx, torch.tensor(route).to(self.td.device)].sum()
+        # print(f"cost", self.cost[self.instance_idx])
+
+        reward = (self.cost[self.instance_idx, torch.tensor(route).to(self.td.device)] * \
+            self.attack_prob[self.instance_idx, torch.tensor(route).to(self.td.device)]).sum()
+        # print(f"reward:", reward)
         # 有attack但是未拜访的
-        undefend = torch.ones(self.num_loc, device=self.td.device, dtype=torch.bool)
-        undefend[torch.tensor(route).to(self.td.device)] = False
-        costs = (self.stochastic_cost[self.instance_idx] * undefend).sum(-1)
-        reward -= costs
+        # undefend = torch.ones(self.num_loc, device=self.td.device, dtype=torch.bool)
+        # undefend[torch.tensor(route).to(self.td.device)] = False
+        # costs = (self.stochastic_cost[self.instance_idx] * undefend).sum(-1)
+        # reward -= costs
         return reward
 
+    def get_real_reward(self, route):
+        '''
+        collect :defended reward - undefended attack's costs
+        '''
+        # 所有路径上点的costs
+        # print(f"cost", self.cost[self.instance_idx])
+
+        reward = (self.stochastic_cost[self.instance_idx, torch.tensor(route).to(self.td.device)] * \
+            self.real_prob[self.instance_idx, torch.tensor(route).to(self.td.device)]).sum()
+        # print(f"reward:", reward)
+        # 有attack但是未拜访的
+        # undefend = torch.ones(self.num_loc, device=self.td.device, dtype=torch.bool)
+        # undefend[torch.tensor(route).to(self.td.device)] = False
+        # costs = (self.stochastic_cost[self.instance_idx] * undefend).sum(-1)
+        # reward -= costs
+        return reward
     def show_route(self, route):
         fore = 0
         for n in route[1:]:
@@ -285,7 +308,7 @@ class LocalSearch_opsa:
         将inserted_node插入到route中,返回插入route的最佳位置: shift最小的位置
         '''
         # 张量计算
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = "cpu"
         if isinstance(route, list):
             route = torch.tensor(route).to(device)
 
@@ -312,7 +335,7 @@ class LocalSearch_opsa:
         if (~feasible).all():
             # print("no feasible nodes")
             return -1, 0, 0, 0
-        shifts_tmp = torch.zeros(20).to(device)        # 插入到node idx后，后面的平移时间 
+        shifts_tmp = torch.zeros(self.num_loc).to(device)        # 插入到node idx后，后面的平移时间 
         shifts_tmp = shifts_tmp.scatter(0, route, torch.tensor(shifts))     # 加到inserted_node以后的node上，如果是最后一个点，
 
         #根据shifts得到inserted_node插入到route中的最佳位置： min shifts的pos和shift

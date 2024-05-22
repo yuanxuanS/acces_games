@@ -4,7 +4,8 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, LocalSearch1_csp, LocalSearch2_csp, localsearch_opsa
+from rl4co.heuristic import CW_svrp, TabuSearch_svrp, Random_svrp, \
+                LocalSearch1_csp, LocalSearch2_csp, LocalSearch_opsa, Greedy_opsa
 
 def check_unused_kwargs(class_, kwargs):
     if len(kwargs) > 0 and not (len(kwargs) == 1 and "progress" in kwargs):
@@ -35,7 +36,8 @@ def evaluate_baseline(
             "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
         },
         "opsa": {
-            "LS":  {"func": localsearch_opsa, "kwargs": {}},
+            "LS":  {"func": LocalSearch_opsa, "kwargs": {}},
+            "greedy_op": {"func": Greedy_opsa, "kwargs": {}},
         }
         
     }
@@ -48,6 +50,7 @@ def evaluate_baseline(
     td_load = env.load_data(f)       # this func normalize to [0-1]
 
     if "sample_lst" in kwargs.keys():
+
         if isinstance(kwargs["sample_lst"], list):
             td_load = td_load[kwargs["sample_lst"], ...]
             print("size after sample: ", td_load["locs"].shape)
@@ -100,7 +103,7 @@ def evaluate_baseline_withpsroadv(
             "LS2": {"func": LocalSearch2_csp, "kwargs": {}},
         },
         "opsa": {
-            "LS":  {"func": localsearch_opsa, "kwargs": {}},
+            "LS":  {"func": LocalSearch_opsa, "kwargs": {}},
         }
         
     }

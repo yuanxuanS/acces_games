@@ -86,7 +86,7 @@ class CSPEnv(RL4COEnvBase):
         '''
         batch_size = td.batch_size[0]
         current_node = td["action"]
-        first_node = current_node if td["i"].all() == 0 else td["first_node"]       # 决定fisrt node是哪个：
+        first_node = current_node if td["i"].all() == 0 else td["first_node"]       
 
         # get covered node of current node
         locs = td["locs"]       # [batch, num_loc,2]
@@ -199,7 +199,7 @@ class CSPEnv(RL4COEnvBase):
         guidence_vec = torch.ones(
             (*batch_size, num_loc), dtype=torch.float64, device=device
         )  # update while decoding, init 1. covered then decrease
-        # 用于计数：现在选到的node个数
+        # 
         i = torch.ones((*batch_size, 1), dtype=torch.int64, device=device)
         guidence_vec *= torch.where(covered_node, curr_covered_guidence_vec,
                                                         torch.ones_like(covered_node))

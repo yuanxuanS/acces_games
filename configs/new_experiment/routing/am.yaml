@@ -8,7 +8,7 @@ defaults:
   - override /logger: wandb.yaml
 
 env:
-  num_loc: 20
+  num_loc: 50
 
 logger:
   wandb:
@@ -31,14 +31,14 @@ model:
   lr_scheduler:
     "MultiStepLR"
   lr_scheduler_kwargs:
-    milestones: [30, 45]
+    milestones: [80, 95]
     gamma: 0.1
   data_dir: "data${paths.stoch_idx}/"
   # policy_kwargs:
   #   test_decode_type: "multistart_sampling"
 
 trainer:
-  max_epochs: 50 #3 #
+  max_epochs: 200 #3 #
 
 seed: 1234
 

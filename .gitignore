@@ -9,13 +9,14 @@ README.md
 *.npy
 *.pkl
 *.txt
-/tmp_svrp
+.vscode/
 /data
 *.jpg
 *.png
 *.zip
 *.out
 *.sh
+*.eps
 # Logs
 /logs
 

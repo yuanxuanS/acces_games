@@ -8,3 +8,4 @@ from rl4co.heuristic.LS1_csp import LocalSearch1_csp
 from rl4co.heuristic.LS1_csp_batch import LocalSearch1_batch_csp
 from rl4co.heuristic.LS2_csp import LocalSearch2_csp
 from rl4co.heuristic.LS_2opt_csp import LS_csp_2opt
+from rl4co.heuristic.greedy_opsa import Greedy_opsa
