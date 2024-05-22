@@ -17,8 +17,14 @@ README.md
 *.out
 *.sh
 *.eps
+/diagrams
+/psro_test
+t_*.py
+plot*.py
+util_*.py
 # Logs
 /logs
+
 
 # checkpoints
 *saved_checkpoints*
